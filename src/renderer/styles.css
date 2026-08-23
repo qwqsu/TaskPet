@@ -106,12 +106,12 @@ body {
 }
 
 .pet-status-message {
-  /* 任务名保持一行并省略；字号与计时一致。 */
+  /* 任务名保持一行并省略；13px 弱化标题，让 18px 计时成为视觉重点。 */
   display: block;
   width: 100%;
   overflow: hidden;
   color: #263241;
-  font-size: 18px;
+  font-size: 13px;
   font-weight: 700;
   line-height: 1.15;
   text-overflow: ellipsis;

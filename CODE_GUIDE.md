@@ -118,7 +118,8 @@ Renderer → Preload → IPC → Main Process
 
 | 想修改的内容 | 文件或常量 |
 | --- | --- |
-| 桌宠任务文字/计时字号 | `src/renderer/styles.css` 的 `.pet-status-message` / `.pet-status-detail` |
+| 桌宠任务文字/计时字号 | `src/renderer/styles.css` 的 `.pet-status-message`（默认 13px）/ `.pet-status-detail`（默认 18px） |
+| idle 状态颜文字及轮换间隔 | `src/renderer/renderer.js` 的 `IDLE_MESSAGES` / `IDLE_MESSAGE_INTERVAL_MS` |
 | 桌宠、文字纵向位置 | `src/renderer/renderer.js` 的 `--pet-top` / `--status-top` |
 | 桌宠窗口基础大小 | `src/pet-window-options.js` 的 `BASE_WINDOW_WIDTH/HEIGHT` |
 | 宠物动画行和帧间隔 | `src/pet-state.js` 的 `PET_STATE_DEFINITIONS` |
@@ -157,4 +158,3 @@ npm run build:unpack
 ```
 
 `dev:bounds` 会显示红色窗口范围、绿色宠物区域和蓝色图片帧，适合调整桌宠位置与大小。
-

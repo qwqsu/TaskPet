@@ -18,7 +18,7 @@ test("pet renderer markup keeps the visible stage mounted", () => {
   assert.doesNotMatch(html, /bubble|settings/i);
 });
 
-test("pet renderer places the pet above separate task and runtime lines", () => {
+test("pet renderer places a 13px task line above an emphasized 18px runtime", () => {
   const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
   const styles = fs.readFileSync(path.join(rendererRoot, "styles.css"), "utf8");
   const messageFontSize = styles.match(
@@ -34,7 +34,27 @@ test("pet renderer places the pet above separate task and runtime lines", () => 
   assert.match(styles, /\.pet\s*\{[^}]*top: var\(--pet-top\)/s);
   assert.match(styles, /\.pet-status-message\s*\{[^}]*text-overflow: ellipsis/s);
   assert.match(styles, /\.pet-status-detail\s*\{[^}]*font-variant-numeric: tabular-nums/s);
-  assert.equal(messageFontSize, detailFontSize);
+  assert.equal(messageFontSize, "13px");
+  assert.equal(detailFontSize, "18px");
+});
+
+test("idle pet rotates cute text and yields immediately to real task state", () => {
+  const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
+
+  for (const idleMessage of ["ヾ(•ω•`)o", "(❁´◡`❁)", "(‾◡◝)"]) {
+    assert.ok(source.includes(idleMessage));
+  }
+  assert.match(source, /const IDLE_MESSAGE_INTERVAL_MS = 5_000/);
+  assert.match(
+    source,
+    /state === "idle" && message\.length === 0 && detail\.length === 0/
+  );
+  assert.match(source, /clearTimeout\(idleMessageTimer\)/);
+  assert.match(
+    source,
+    /setTimeout\(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS\)/
+  );
+  assert.match(source, /updatePetStatus\(nextState, message, detail\)/);
 });
 
 test("renderer uses only the six TaskPet states", () => {

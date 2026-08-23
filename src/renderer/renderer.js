@@ -17,6 +17,13 @@ const DEFAULT_FRAME = Object.freeze({ width: 192, height: 208, columns: 8, rows:
 const BASE_SPRITE_SCALE = 0.86;
 const BASE_WINDOW_WIDTH = 240;
 const BASE_WINDOW_HEIGHT = 286;
+// 没有任务执行时轮播的装饰文字；只改这里即可增删颜文字。
+const IDLE_MESSAGES = Object.freeze([
+  "ヾ(•ω•`)o",
+  "(❁´◡`❁)",
+  "(‾◡◝)"
+]);
+const IDLE_MESSAGE_INTERVAL_MS = 5_000;
 const ALLOWED_STATES = new Set([
   "idle",
   "working",
@@ -48,6 +55,8 @@ let maxZoom = 2.4;
 let resizeStart = null;
 let hideResizeTimer = null;
 let animationStarted = false;
+let idleMessageIndex = 0;
+let idleMessageTimer = null;
 
 // ---------- 调试边框、输入归一化与缩放 ----------
 
@@ -178,19 +187,47 @@ function setPet(petPayload) {
   drawFrame();
 }
 
+function renderPetStatus(message, detail, isIdleMessage = false) {
+  // 装饰颜文字不需要屏幕阅读器每隔 5 秒重复播报；真实任务状态继续使用 polite。
+  petStatus.setAttribute("aria-live", isIdleMessage ? "off" : "polite");
+  petStatusMessage.textContent = message;
+  petStatusDetail.textContent = detail;
+  petStatus.classList.toggle("has-detail", detail.length > 0);
+  petStatus.classList.toggle("show", message.length > 0 || detail.length > 0);
+}
+
+function stopIdleMessageRotation() {
+  if (idleMessageTimer !== null) clearTimeout(idleMessageTimer);
+  idleMessageTimer = null;
+}
+
+function showNextIdleMessage() {
+  if (currentState !== "idle") return;
+  const message = IDLE_MESSAGES[idleMessageIndex % IDLE_MESSAGES.length];
+  idleMessageIndex = (idleMessageIndex + 1) % IDLE_MESSAGES.length;
+  renderPetStatus(message, "", true);
+  idleMessageTimer = setTimeout(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS);
+}
+
+function updatePetStatus(state, message, detail) {
+  stopIdleMessageRotation();
+  if (state === "idle" && message.length === 0 && detail.length === 0) {
+    showNextIdleMessage();
+    return;
+  }
+  renderPetStatus(message, detail);
+}
+
 function setPetState(payload) {
   if (payload?.activePet && payload.activePet.key !== currentPet?.key) {
     setPet(payload.activePet);
   }
   const message = typeof payload?.message === "string" ? payload.message.slice(0, 160) : "";
   const detail = typeof payload?.detail === "string" ? payload.detail.slice(0, 32) : "";
-  // 标题和计时写入不同元素，标题 ellipsis 不会影响 detail。
-  petStatusMessage.textContent = message;
-  petStatusDetail.textContent = detail;
-  petStatus.classList.toggle("has-detail", detail.length > 0);
-  petStatus.classList.toggle("show", message.length > 0 || detail.length > 0);
   const nextState = normalizeState(payload?.state);
   if (!animationStarted || nextState !== currentState) setAnimationState(nextState);
+  // 标题和计时写入不同元素；idle 空状态则由 Renderer 补上装饰颜文字。
+  updatePetStatus(nextState, message, detail);
 }
 
 // ---------- 单击与拖拽 ----------
@@ -326,3 +363,4 @@ resizeHandle.addEventListener("pointerdown", startResize);
 resizeHandle.addEventListener("pointermove", moveResize);
 resizeHandle.addEventListener("pointerup", endResize);
 resizeHandle.addEventListener("pointercancel", endResize);
+window.addEventListener("beforeunload", stopIdleMessageRotation);
