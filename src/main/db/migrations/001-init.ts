@@ -1,3 +1,7 @@
+/**
+ * 数据库 v1：建立任务模板、任务实例和设置表。
+ * 已发布 migration 只能追加新版本，不能事后修改，否则旧用户数据库无法可靠升级。
+ */
 export interface Migration {
   version: number;
   name: string;

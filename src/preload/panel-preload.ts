@@ -1,3 +1,7 @@
+/**
+ * 任务面板的 sandboxed preload bridge。
+ * 把 tasks/processes/runtime 三组最小 API 暴露给 Renderer，实际 SQLite 和系统调用仍留在 Main。
+ */
 import { contextBridge, ipcRenderer } from "electron";
 import type {
   CreateTaskInput,
@@ -107,6 +111,7 @@ const processApi = Object.freeze({
 });
 
 const runtimeApi = Object.freeze({
+  // snapshot 用于首次渲染；onChanged 接收后续每秒内存快照。
   snapshot: (): Promise<TaskApiResult<RuntimeTaskSnapshot[]>> => (
     ipcRenderer.invoke(PROCESS_CHANNELS.runtimeSnapshot)
   ),

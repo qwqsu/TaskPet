@@ -1,3 +1,7 @@
+/**
+ * Task / TaskOccurrence 的集中 SQL 层。
+ * 上层 TaskService 决定业务规则，本类负责原子查询、状态条件和数据库字段映射。
+ */
 import type { TaskDatabase } from "./database";
 import type {
   CompletionSource,
@@ -123,6 +127,7 @@ function toTaskListItem(row: JoinedRow): TaskListItem {
   };
 }
 
+// 面板和 Runtime 经常同时需要模板与实例，统一 JOIN 可避免各查询重复字段映射。
 const JOINED_TASK_SELECT = `
   SELECT
     t.id,
@@ -232,6 +237,7 @@ export class TaskRepository {
   }
 
   insertOccurrenceIfMissing(occurrence: NewOccurrenceRow): boolean {
+    // UNIQUE(task_id, occurrence_date) + DO NOTHING 让 lazy materialization 可重复调用。
     const result = this.database.prepare(`
       INSERT INTO task_occurrences (
         id, task_id, occurrence_date, status, accumulated_sec,
@@ -302,6 +308,7 @@ export class TaskRepository {
     accumulatedSec: number,
     updatedAt: string
   ): boolean {
+    // MAX 防止较旧的 checkpoint 覆盖已经持久化的更大累计值。
     return this.database.prepare(`
       UPDATE task_occurrences
       SET accumulated_sec = MAX(accumulated_sec, ?), updated_at = ?
@@ -328,6 +335,7 @@ export class TaskRepository {
     accumulatedSec: number,
     completedAt: string
   ): boolean {
+    // WHERE status <> completed 保证达到目标后只完成一次。
     return this.database.prepare(`
       UPDATE task_occurrences
       SET status = 'completed',
@@ -388,6 +396,7 @@ export class TaskRepository {
 }
 
 export class SettingsRepository {
+  // 通用 key/value 设置仓库；复杂设置由调用方自行序列化为字符串。
   constructor(private readonly database: TaskDatabase) {}
 
   get(key: string): string | null {

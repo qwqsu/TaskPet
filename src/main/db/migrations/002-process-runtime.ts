@@ -1,3 +1,7 @@
+/**
+ * 数据库 v2：增加用户主动绑定的程序规则和与任务相关的运行 Session。
+ * 不保存完整系统进程历史，只保存匹配任务所需的信息。
+ */
 import type { Migration } from "./001-init";
 
 export const processRuntimeMigration: Migration = {

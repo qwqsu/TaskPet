@@ -1,3 +1,7 @@
+/**
+ * 进程监控层的共享数据契约。
+ * 此文件只定义 Main、preload 和 Renderer 之间传递的数据，不执行系统扫描。
+ */
 import type { OccurrenceStatus, TaskCompletionMode } from "./task-types";
 
 export type ProcessMatchMode = "exact_path" | "process_name";
@@ -25,6 +29,7 @@ export interface RunningProgram {
   pidCount: number;
 }
 
+// 一次目标程序连续运行对应一条 Session，用于累计和崩溃恢复。
 export interface ProcessSession {
   id: string;
   taskId: string;
@@ -38,6 +43,7 @@ export interface ProcessSession {
   finalized: boolean;
 }
 
+// RuntimeTracker 每秒生成轻量快照供桌宠和任务面板显示，不代表每秒写库。
 export interface RuntimeTaskSnapshot {
   taskId: string;
   occurrenceId: string;
@@ -49,6 +55,7 @@ export interface RuntimeTaskSnapshot {
   active: boolean;
 }
 
+// 事件总线把运行时变化与具体 UI 解耦。
 export type TaskRuntimeEvent =
   | { type: "TASK_ACTIVE"; task: RuntimeTaskSnapshot }
   | { type: "TASK_PROGRESS"; task: RuntimeTaskSnapshot }

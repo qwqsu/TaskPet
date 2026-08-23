@@ -1,3 +1,7 @@
+/**
+ * 注册任务 CRUD、完成/重开和历史查询 IPC。
+ * Handler 只做边界校验与事件协调，业务规则保留在 TaskService。
+ */
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import type { ZodTypeAny } from "zod";
 import {
@@ -47,6 +51,7 @@ function asFailure<T>(error: unknown): TaskApiResult<T> {
 export function registerTaskIpc(options: RegisterTaskIpcOptions): () => void {
   const registeredChannels: string[] = [];
 
+  // 所有任务频道共用可信发送者、Zod 校验和统一 TaskApiResult。
   function handle<InputSchema extends ZodTypeAny, Output>(
     channel: string,
     schema: InputSchema,
@@ -103,6 +108,7 @@ export function registerTaskIpc(options: RegisterTaskIpcOptions): () => void {
   });
 
   handle(TASK_CHANNELS.complete, OccurrenceIdInputSchema, ({ occurrenceId }) => {
+    // 手动完成前先停止可能仍在内存计时的 Session，避免完成后继续累计。
     options.beforeOccurrenceComplete(occurrenceId);
     const result = options.service.completeOccurrence(occurrenceId);
     if (result.changed) {
@@ -121,6 +127,7 @@ export function registerTaskIpc(options: RegisterTaskIpcOptions): () => void {
     return result;
   });
 
+  // 返回清理函数，由 TaskSystem 在应用退出时调用。
   return () => {
     for (const channel of registeredChannels) {
       options.ipcMain.removeHandler(channel);

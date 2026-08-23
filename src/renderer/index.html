@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- 桌宠 Renderer：只包含 sprite、状态文字和缩放手柄，不直接访问 Node.js/SQLite。 -->
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -9,6 +10,7 @@
   </head>
   <body>
     <main class="stage" aria-live="polite">
+      <!-- 可拖拽宠物区域；sprite 加载失败时显示 fallback 机器人。 -->
       <section id="pet" class="pet" aria-label="TaskPet 桌宠">
         <div id="sprite" class="sprite"></div>
         <div id="fallback" class="fallback">
@@ -19,7 +21,12 @@
           <div class="bot-body"></div>
         </div>
       </section>
-      <p id="petStatus" class="pet-status" role="status" aria-live="polite"></p>
+      <!-- message 是任务文字，detail 是独立计时，长标题不会挤掉计时。 -->
+      <div id="petStatus" class="pet-status" role="status" aria-live="polite">
+        <span id="petStatusMessage" class="pet-status-message"></span>
+        <span id="petStatusDetail" class="pet-status-detail"></span>
+      </div>
+      <!-- 仅 idle + 鼠标靠近宠物时可操作的缩放入口。 -->
       <button id="resizeHandle" class="resize-handle" type="button" aria-label="缩放桌面宠物">
         <img class="resize-icon" src="./resize-handle.svg" alt="" aria-hidden="true" />
       </button>

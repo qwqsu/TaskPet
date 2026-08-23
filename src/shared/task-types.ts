@@ -1,3 +1,7 @@
+/**
+ * TaskPet 的核心领域模型。
+ * Task 保存长期规则；TaskOccurrence 保存某一天/某一次的实际执行与完成记录。
+ */
 export type TaskType = "daily" | "one_time";
 
 export type TaskCompletionMode =
@@ -42,6 +46,7 @@ export interface TaskListItem {
   occurrence: TaskOccurrence;
 }
 
+// 历史记录额外提供用于页面分组的本地日期。
 export interface HistoryEntry extends TaskListItem {
   historyDate: string;
 }

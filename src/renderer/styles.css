@@ -1,16 +1,22 @@
+/*
+ * 透明桌宠窗口样式。
+ * 常改入口：:root/renderer.js 控制位置，pet-status 两个子类控制任务文字与计时字号。
+ */
 * {
   box-sizing: border-box;
 }
 
 :root {
+  /* 这些默认值对应 zoom=1；renderer.js 会在缩放时写入同名变量。 */
   --zoom: 1;
   --pet-left: 36px;
-  --pet-bottom: 12px;
+  --pet-top: 8px;
   --pet-width: 168px;
   --pet-height: 184px;
   --sprite-left: 1px;
   --handle-right: 34px;
-  --handle-bottom: 52px;
+  --handle-top: 126px;
+  --status-top: 198px;
 }
 
 html,
@@ -31,20 +37,60 @@ body {
   -webkit-app-region: no-drag;
 }
 
-.pet-status {
+/* dev:bounds 专用：红=窗口、绿=宠物命中区、蓝=sprite 单帧。 */
+.debug-pet-bounds .stage {
+  background: rgba(255, 59, 48, 0.08);
+  box-shadow: inset 0 0 0 2px #ff3b30;
+}
+
+.debug-pet-bounds .stage::before,
+.debug-pet-bounds .stage::after {
   position: absolute;
-  top: 18px;
+  z-index: 20;
+  padding: 3px 6px;
+  border-radius: 4px;
+  color: #ffffff;
+  font: 700 10px/1.3 "Microsoft YaHei", "Segoe UI", sans-serif;
+  pointer-events: none;
+}
+
+.debug-pet-bounds .stage::before {
+  top: 3px;
+  left: 3px;
+  content: attr(data-debug-bounds);
+  background: #ff3b30;
+}
+
+.debug-pet-bounds .stage::after {
+  top: 3px;
+  right: 3px;
+  content: "绿：宠物区域  蓝：图片帧";
+  background: rgba(24, 34, 47, 0.9);
+}
+
+.debug-pet-bounds .pet {
+  outline: 2px dashed #16a765;
+  background: rgba(22, 167, 101, 0.08);
+}
+
+.debug-pet-bounds .sprite {
+  outline: 2px dashed #1677ff;
+  background-color: rgba(22, 119, 255, 0.08);
+}
+
+.pet-status {
+  /* 状态卡位于宠物下方；pointer-events:none 避免挡住后面的软件。 */
+  position: absolute;
+  top: var(--status-top);
   left: 50%;
   z-index: 5;
-  max-width: calc(100% - 24px);
+  width: calc(100% - 24px);
   margin: 0;
-  padding: 7px 11px;
-  overflow: hidden;
+  padding: 4px 11px 5px;
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 12px;
   color: #263241;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  text-align: center;
   background: rgba(255, 255, 255, 0.9);
   box-shadow: 0 6px 18px rgba(15, 23, 42, 0.13);
   backdrop-filter: blur(8px);
@@ -52,8 +98,6 @@ body {
   transform: translate(-50%, 4px);
   transition: opacity 150ms ease, transform 150ms ease;
   pointer-events: none;
-  font-size: 12px;
-  font-weight: 700;
 }
 
 .pet-status.show {
@@ -61,10 +105,40 @@ body {
   transform: translate(-50%, 0);
 }
 
+.pet-status-message {
+  /* 任务名保持一行并省略；字号与计时一致。 */
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: #263241;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pet-status-detail {
+  /* 独立计时行使用等宽数字，秒数跳动时文字不会左右抖动。 */
+  display: none;
+  margin-top: 2px;
+  color: #11845b;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.pet-status.has-detail .pet-status-detail {
+  display: block;
+}
+
 .pet {
   position: absolute;
   left: var(--pet-left);
-  bottom: var(--pet-bottom);
+  top: var(--pet-top);
   width: var(--pet-width);
   height: var(--pet-height);
   transform-origin: 50% 92%;
@@ -77,6 +151,7 @@ body {
   cursor: grabbing;
 }
 
+/* spritesheet 通过 background-position 切换帧，本元素始终只显示一帧大小。 */
 .sprite {
   position: absolute;
   left: var(--sprite-left);
@@ -91,7 +166,7 @@ body {
 .resize-handle {
   position: absolute;
   right: var(--handle-right);
-  bottom: var(--handle-bottom);
+  top: var(--handle-top);
   width: 26px;
   height: 26px;
   display: block;
@@ -152,6 +227,7 @@ body {
   opacity: 1;
 }
 
+/* 宠物资源不可用时的纯 CSS 机器人，确保窗口仍有可见反馈。 */
 .fallback {
   position: absolute;
   left: 20px;
@@ -224,6 +300,7 @@ body {
   animation: idle-bob 2.4s ease-in-out infinite;
 }
 
+/* 状态级 CSS 微动叠加在 spritesheet 帧动画之外。 */
 .pet[data-state="attention"],
 .pet[data-state="done"] {
   animation: hop 900ms ease-in-out infinite;

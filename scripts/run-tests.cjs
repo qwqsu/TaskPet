@@ -1,3 +1,7 @@
+/**
+ * 测试启动器：同时收集 JavaScript 原始测试和 TypeScript 编译后的测试，
+ * 再让 Electron 以 Node test runner 模式执行，确保 native 依赖 ABI 与应用一致。
+ */
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");

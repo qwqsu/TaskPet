@@ -1,3 +1,7 @@
+/*
+ * 任务面板视觉样式。
+ * 色板集中在 :root；后续换主题优先修改变量，不必逐个改组件。
+ */
 :root {
   color-scheme: light;
   --ink: #24261f;
@@ -30,6 +34,8 @@ body {
     linear-gradient(155deg, #faf8f2 0%, var(--paper) 68%);
   font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
 }
+
+/* ---------- 页面头部与导航 ---------- */
 
 button,
 input,
@@ -144,6 +150,8 @@ h2 {
   font-size: 12px;
 }
 
+/* ---------- 今日任务与历史卡片 ---------- */
+
 .task-list,
 .history-list {
   display: grid;
@@ -257,6 +265,8 @@ h2 {
   display: none !important;
 }
 
+/* ---------- 添加/编辑任务对话框 ---------- */
+
 .task-dialog {
   width: min(460px, calc(100vw - 28px));
   max-height: calc(100vh - 32px);
@@ -317,6 +327,8 @@ h2 {
   border-radius: 14px;
   background: rgba(239, 242, 234, 0.58);
 }
+
+/* ---------- 当前程序选择器 ---------- */
 
 .binding-heading,
 .picker-heading,
@@ -435,6 +447,8 @@ h2 {
   border-color: rgba(67, 91, 57, 0.4);
   box-shadow: 0 8px 24px rgba(67, 91, 57, 0.12);
 }
+
+/* ---------- 表单控件、按钮和响应式布局 ---------- */
 
 .field input,
 .field textarea,

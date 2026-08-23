@@ -8,6 +8,7 @@
     "compile:test": "tsc -p tsconfig.test.json",
     "start": "npm run compile && electron .",
     "dev": "npm run compile && electron .",
+    "dev:bounds": "npm run compile && electron . --debug-pet-bounds",
     "smoke": "npm run compile && electron . --smoke-test",
     "build": "npm test && npm run compile && electron-builder --dir",
     "build:unpack": "npm run compile && electron-builder --dir",

@@ -1,3 +1,7 @@
+/**
+ * 任务面板 BrowserWindow 的集中安全配置。
+ * 面板是普通不透明窗口，与透明桌宠窗口分离，便于输入和获得焦点。
+ */
 import type { BrowserWindowConstructorOptions, NativeImage, Rectangle } from "electron";
 
 export const TASK_PANEL_WIDTH = 420;

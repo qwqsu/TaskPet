@@ -1,9 +1,17 @@
+/**
+ * 透明桌宠窗口的 Renderer。
+ * 负责 spritesheet 动画、状态文字、点击/拖拽和缩放；所有系统操作经 window.taskPet preload 完成。
+ */
 const pet = document.getElementById("pet");
 const stage = document.querySelector(".stage");
 const sprite = document.getElementById("sprite");
 const fallback = document.getElementById("fallback");
 const resizeHandle = document.getElementById("resizeHandle");
 const petStatus = document.getElementById("petStatus");
+const petStatusMessage = document.getElementById("petStatusMessage");
+const petStatusDetail = document.getElementById("petStatusDetail");
+
+// ---------- 动画格式与页面内存状态 ----------
 
 const DEFAULT_FRAME = Object.freeze({ width: 192, height: 208, columns: 8, rows: 9 });
 const BASE_SPRITE_SCALE = 0.86;
@@ -40,6 +48,17 @@ let maxZoom = 2.4;
 let resizeStart = null;
 let hideResizeTimer = null;
 let animationStarted = false;
+
+// ---------- 调试边框、输入归一化与缩放 ----------
+
+function updateDebugBoundsLabel() {
+  stage.dataset.debugBounds = `窗口 ${Math.round(BASE_WINDOW_WIDTH * zoom)} × ${Math.round(BASE_WINDOW_HEIGHT * zoom)}`;
+}
+
+function applyDebugBounds(enabled) {
+  document.documentElement.classList.toggle("debug-pet-bounds", Boolean(enabled));
+  updateDebugBoundsLabel();
+}
 
 function normalizeState(state) {
   return ALLOWED_STATES.has(state) ? state : "idle";
@@ -81,15 +100,18 @@ function applyAnimations(actions) {
 }
 
 function applyZoom(nextZoom) {
+  // BrowserWindow 和图片均按同一 zoom 计算；这些基准数字对应 240×286 的默认布局。
   zoom = clampZoom(nextZoom);
+  updateDebugBoundsLabel();
   document.documentElement.style.setProperty("--zoom", String(zoom));
   document.documentElement.style.setProperty("--pet-left", `${36 * zoom}px`);
-  document.documentElement.style.setProperty("--pet-bottom", `${12 * zoom}px`);
+  document.documentElement.style.setProperty("--pet-top", `${8 * zoom}px`);
   document.documentElement.style.setProperty("--pet-width", `${168 * zoom}px`);
   document.documentElement.style.setProperty("--pet-height", `${184 * zoom}px`);
   document.documentElement.style.setProperty("--sprite-left", `${1 * zoom}px`);
   document.documentElement.style.setProperty("--handle-right", `${34 * zoom}px`);
-  document.documentElement.style.setProperty("--handle-bottom", `${52 * zoom}px`);
+  document.documentElement.style.setProperty("--handle-top", `${126 * zoom}px`);
+  document.documentElement.style.setProperty("--status-top", `${198 * zoom}px`);
   updateSpriteMetrics();
   drawFrame();
 }
@@ -97,6 +119,8 @@ function applyZoom(nextZoom) {
 function getAtlasScale() {
   return BASE_SPRITE_SCALE * zoom;
 }
+
+// ---------- Codex-compatible spritesheet 绘制 ----------
 
 function updateSpriteMetrics() {
   const atlasScale = getAtlasScale();
@@ -106,6 +130,7 @@ function updateSpriteMetrics() {
 }
 
 function drawFrame() {
+  // 每一行代表一个状态，每一列代表该状态的一帧。
   const animation = animations[currentState] || animations.idle;
   const atlasScale = getAtlasScale();
   const x = -(frameIndex * frame.width * atlasScale);
@@ -157,27 +182,29 @@ function setPetState(payload) {
   if (payload?.activePet && payload.activePet.key !== currentPet?.key) {
     setPet(payload.activePet);
   }
-  const message = typeof payload?.message === "string" ? payload.message.slice(0, 120) : "";
-  petStatus.textContent = message;
-  petStatus.classList.toggle("show", message.length > 0);
+  const message = typeof payload?.message === "string" ? payload.message.slice(0, 160) : "";
+  const detail = typeof payload?.detail === "string" ? payload.detail.slice(0, 32) : "";
+  // 标题和计时写入不同元素，标题 ellipsis 不会影响 detail。
+  petStatusMessage.textContent = message;
+  petStatusDetail.textContent = detail;
+  petStatus.classList.toggle("has-detail", detail.length > 0);
+  petStatus.classList.toggle("show", message.length > 0 || detail.length > 0);
   const nextState = normalizeState(payload?.state);
   if (!animationStarted || nextState !== currentState) setAnimationState(nextState);
 }
 
-async function startDrag(event) {
+// ---------- 单击与拖拽 ----------
+
+function startDrag(event) {
   if (event.button !== 0 || event.target.closest("#resizeHandle")) return;
   const pointerId = event.pointerId;
   pet.setPointerCapture(pointerId);
-  const bounds = await window.taskPet.getWindowBounds();
-  if (!bounds || !pet.hasPointerCapture(pointerId)) return;
-
+  window.taskPet.startWindowDrag();
   dragStart = {
     pointerId,
     startScreenX: event.screenX,
     startScreenY: event.screenY,
     lastScreenX: event.screenX,
-    windowX: bounds.x,
-    windowY: bounds.y,
     moved: false
   };
   lastDragDirection = null;
@@ -191,10 +218,7 @@ function moveDrag(event) {
   const stepX = event.screenX - dragStart.lastScreenX;
   dragStart.lastScreenX = event.screenX;
 
-  window.taskPet.moveWindow({
-    x: dragStart.windowX + dx,
-    y: dragStart.windowY + dy
-  });
+  window.taskPet.moveWindow();
 
   if (Math.abs(stepX) < 1) return;
   const direction = stepX > 0 ? "drag-right" : "drag-left";
@@ -205,6 +229,7 @@ function moveDrag(event) {
 }
 
 function endDrag(event) {
+  // 移动不足 5px 视为单击，打开任务面板；真正拖拽则只保存位置。
   if (!dragStart || event.pointerId !== dragStart.pointerId) return;
   const wasClick = !dragStart.moved;
   dragStart = null;
@@ -212,6 +237,8 @@ function endDrag(event) {
   window.taskPet.finishDrag();
   if (wasClick) window.taskPet.toggleTaskPanel();
 }
+
+// ---------- 宠物缩放 ----------
 
 function showResizeHandle() {
   if (currentState !== "idle" && !resizeStart) return;
@@ -267,10 +294,13 @@ function endResize(event) {
   hideResizeHandleSoon();
 }
 
+// ---------- 首次初始化与 DOM 事件绑定 ----------
+
 window.taskPet.getInitialState().then((initial) => {
   const config = initial?.config || {};
   minZoom = Number(config.minZoom) || minZoom;
   maxZoom = Number(config.maxZoom) || maxZoom;
+  applyDebugBounds(config.debugPetBounds);
   applyAnimations(initial?.actions);
   applyZoom(Number(config.zoom) || 1);
   setPet(initial?.activePet);

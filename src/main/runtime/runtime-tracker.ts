@@ -1,3 +1,7 @@
+/**
+ * 任务运行时长核心。
+ * 进程生命周期、内存 UI tick、SQLite checkpoint、跨 Session 累计和跨午夜都在这里协调。
+ */
 import { randomUUID } from "node:crypto";
 import type { TaskDatabase } from "../db/database";
 import { ProcessSessionRepository } from "../db/process-session-repository";
@@ -17,6 +21,7 @@ interface ActiveRuntime {
   occurrence: TaskOccurrence;
   session: ProcessSession;
   processInfo: ProcessInfo;
+  // base 是本次 Session 开始前已累计的秒数，当前显示值 = base + 本次 wall-clock。
   baseAccumulatedSec: number;
   startedAtMs: number;
   suspectedExitAtMs: number | null;
@@ -98,6 +103,7 @@ export class RuntimeTracker {
   }
 
   recoverStaleSessions(): number {
+    // 崩溃后只能可信地累计到最后一次 checkpoint 的 last_seen_at，不能算到重新启动时。
     const openSessions = this.sessions.listOpen();
     if (openSessions.length === 0) {
       this.tasks.resetAllActiveOccurrences(this.clock.now().toISOString());
@@ -141,6 +147,7 @@ export class RuntimeTracker {
     const timestamp = observedAt.toISOString();
     let session: ProcessSession | null = null;
 
+    // occurrence 进入 active 与创建 open Session 必须原子完成。
     this.database.transaction(() => {
       if (!this.tasks.markOccurrenceActive(item.occurrence.id, timestamp)) return;
       session = this.sessions.insert({
@@ -202,6 +209,7 @@ export class RuntimeTracker {
   }
 
   tick(now = this.clock.now()): void {
+    // 高频 tick 只更新内存快照和 UI 事件，不在这里写 SQLite。
     const nowMs = now.getTime();
     for (const taskId of [...this.active.keys()]) {
       this.advanceTaskTo(taskId, nowMs);
@@ -213,6 +221,7 @@ export class RuntimeTracker {
   }
 
   checkpoint(now = this.clock.now()): void {
+    // 低频 checkpoint 才把 Session last_seen_at 和累计时间写入数据库。
     const nowMs = now.getTime();
     for (const taskId of [...this.active.keys()]) {
       this.advanceTaskTo(taskId, nowMs);
@@ -246,6 +255,7 @@ export class RuntimeTracker {
   }
 
   private findOrCreateRuntimeCandidate(taskId: string, observedAt: Date): TaskListItem | null {
+    // 程序可能跨午夜保持运行，因此这里也能为新一天 lazy materialize occurrence。
     const occurrenceDate = toLocalDateKey(observedAt);
     const existing = this.tasks.findRuntimeCandidate(taskId, occurrenceDate);
     if (existing) return existing;
@@ -268,6 +278,7 @@ export class RuntimeTracker {
   }
 
   private advanceTaskTo(taskId: string, requestedMs: number): void {
+    // 在同一次推进中比较“达到目标”和“本地午夜”两个边界，先到者先处理。
     let active = this.active.get(taskId);
     while (active) {
       const limitMs = Math.max(
@@ -310,6 +321,7 @@ export class RuntimeTracker {
     );
     let changed = false;
 
+    // Session 收尾和 occurrence 完成同事务提交，避免只完成其中一半。
     this.database.transaction(() => {
       this.sessions.finalize(active.session.id, completedAt, sessionDuration);
       changed = this.tasks.completeDurationOccurrence(
@@ -335,6 +347,7 @@ export class RuntimeTracker {
   }
 
   private finalizeIncomplete(active: ActiveRuntime, stoppedMs: number): void {
+    // confirmed exit 使用第一次消失时间，防抖等待本身不计入运行时长。
     const effectiveStoppedMs = Math.max(
       active.startedAtMs,
       Math.min(stoppedMs, active.suspectedExitAtMs ?? Number.POSITIVE_INFINITY)
@@ -361,6 +374,7 @@ export class RuntimeTracker {
   }
 
   private rolloverDaily(active: ActiveRuntime, midnightMs: number): void {
+    // daily 任务在本地 00:00 切成旧日 Session 和新日 Session；进程无需重新启动。
     const boundary = new Date(midnightMs);
     const timestamp = boundary.toISOString();
     const oldSessionDuration = elapsedSeconds(active.startedAtMs, midnightMs);
@@ -480,6 +494,7 @@ export class RuntimeTracker {
   }
 
   private ensureTimers(): void {
+    // UI 刷新和持久化频率分开，且只有至少一个 active task 时运行。
     if (this.uiTimer === null) {
       this.uiTimer = this.scheduler.setInterval(() => this.tick(), this.uiTickMs);
     }

@@ -1,3 +1,7 @@
+/**
+ * TaskPet 的 Electron Main Process 入口。
+ * 负责桌宠窗口、托盘、宠物资源、桌宠 IPC 和 TaskSystem 生命周期；任务业务本身在 src/main/ 下。
+ */
 const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
@@ -8,13 +12,15 @@ const {
   toPetPayload
 } = require("./pet-library");
 const { PET_ACTIONS, PetStateController } = require("./pet-state");
+const { createPetDragSession, petBoundsForCursor } = require("./pet-window-drag");
 const {
   BASE_WINDOW_HEIGHT,
   BASE_WINDOW_WIDTH,
   MAX_ZOOM,
   MIN_ZOOM,
   clampZoom,
-  createPetWindowOptions
+  createPetWindowOptions,
+  getPetWindowSize
 } = require("./pet-window-options");
 const { TaskSystem } = require("../build/main/task-system");
 
@@ -24,7 +30,9 @@ const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 const LOGO_PATH = path.join(__dirname, "assets", "logo.png");
 const BUNDLED_PETS_ROOT = path.join(__dirname, "assets", "pets");
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
+const IS_DEBUG_PET_BOUNDS = process.argv.includes("--debug-pet-bounds");
 
+// Main Process 持有原生对象；Renderer 只能通过 preload 请求有限操作。
 let petWindow = null;
 let tray = null;
 let pets = [];
@@ -32,12 +40,14 @@ let activePet = null;
 let settings = {};
 let smokeTimeout = null;
 let taskSystem = null;
+let petDragSession = null;
 const smokeReady = { pet: false, panel: false };
 
 const petState = new PetStateController({
   onChange: (state) => broadcastPetState(state)
 });
 
+// smoke test 必须等桌宠、面板和内存数据库都就绪后才判定启动成功。
 function markSmokeReady(component, ready = true) {
   if (!IS_SMOKE_TEST) return;
   if (!ready) {
@@ -58,7 +68,37 @@ function petWindowBounds() {
   return petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null;
 }
 
+function enforcePetWindowSize() {
+  if (!petWindow || petWindow.isDestroyed()) return null;
+  const bounds = petWindow.getBounds();
+  const size = getPetWindowSize(settings.zoom);
+  if (bounds.width !== size.width || bounds.height !== size.height) {
+    petWindow.setBounds({ x: bounds.x, y: bounds.y, ...size });
+  }
+  return petWindow.getBounds();
+}
+
+function startPetWindowDrag() {
+  if (!petWindow || petWindow.isDestroyed()) return false;
+  const cursorPoint = screen.getCursorScreenPoint();
+  petDragSession = createPetDragSession({
+    windowBounds: petWindow.getBounds(),
+    cursorPoint,
+    windowSize: getPetWindowSize(settings.zoom)
+  });
+  petWindow.setBounds(petBoundsForCursor(petDragSession, cursorPoint));
+  return true;
+}
+
+function movePetWindowForDrag() {
+  if (!petWindow || petWindow.isDestroyed() || !petDragSession) return false;
+  petWindow.setBounds(petBoundsForCursor(petDragSession, screen.getCursorScreenPoint()));
+  return true;
+}
+
 app.setName(APP_NAME);
+
+// ---------- 本地设置 ----------
 
 function readJson(filePath) {
   try {
@@ -98,6 +138,8 @@ function createAppIcon() {
   );
 }
 
+// ---------- 宠物资源发现与状态广播 ----------
+
 function getPetStorageInfo() {
   return getActivePetsRoot({ codexHome: CODEX_HOME, settings: {} });
 }
@@ -118,6 +160,7 @@ function discoverPets() {
 }
 
 function petStatePayload(state = petState.snapshot()) {
+  // Renderer 一次拿到状态、动画行定义和当前宠物资源，避免自行读取文件系统。
   return {
     ...state,
     actions: PET_ACTIONS,
@@ -182,6 +225,8 @@ async function openCodexPetsFolder() {
   }
 }
 
+// ---------- 透明桌宠窗口、拖拽与缩放 ----------
+
 function createPetWindow() {
   const primaryDisplay = screen.getPrimaryDisplay();
   const workAreas = [
@@ -207,13 +252,14 @@ function createPetWindow() {
     if (IS_SMOKE_TEST) app.exit(1);
   });
   petWindow.on("closed", () => {
+    petDragSession = null;
     petWindow = null;
   });
 }
 
 function saveWindowBounds() {
   if (!petWindow || petWindow.isDestroyed()) return;
-  settings.windowBounds = petWindow.getBounds();
+  settings.windowBounds = enforcePetWindowSize();
   saveSettings();
 }
 
@@ -222,8 +268,7 @@ function resizePetWindow(zoomInput) {
 
   const zoom = clampZoom(zoomInput);
   const bounds = petWindow.getBounds();
-  const width = Math.round(BASE_WINDOW_WIDTH * zoom);
-  const height = Math.round(BASE_WINDOW_HEIGHT * zoom);
+  const { width, height } = getPetWindowSize(zoom);
   petWindow.setBounds({ x: bounds.x, y: bounds.y, width, height });
   settings.zoom = zoom;
   settings.windowBounds = petWindow.getBounds();
@@ -231,6 +276,8 @@ function resizePetWindow(zoomInput) {
   broadcastZoom();
   return { ok: true, zoom, bounds: petWindow.getBounds() };
 }
+
+// ---------- 系统托盘 ----------
 
 function petTrayItems() {
   const items = pets.map((pet) => ({
@@ -288,6 +335,8 @@ function createTray() {
   });
 }
 
+// ---------- 桌宠 preload IPC ----------
+
 function registerIpcHandlers() {
   ipcMain.handle("taskpet:get-initial-state", (event) => isPetWindowSender(event) ? ({
     ...petStatePayload(),
@@ -296,7 +345,8 @@ function registerIpcHandlers() {
       minZoom: MIN_ZOOM,
       maxZoom: MAX_ZOOM,
       baseWindowWidth: BASE_WINDOW_WIDTH,
-      baseWindowHeight: BASE_WINDOW_HEIGHT
+      baseWindowHeight: BASE_WINDOW_HEIGHT,
+      debugPetBounds: IS_DEBUG_PET_BOUNDS
     }
   }) : null);
 
@@ -305,17 +355,19 @@ function registerIpcHandlers() {
     return petWindow.getBounds();
   });
 
-  ipcMain.handle("taskpet:move-window", (event, point) => {
-    if (!isPetWindowSender(event) || !point || typeof point !== "object") return false;
-    const x = Math.round(Number(point.x));
-    const y = Math.round(Number(point.y));
-    if (!Number.isFinite(x) || !Number.isFinite(y)) return false;
-    petWindow.setPosition(x, y);
-    return true;
+  ipcMain.on("taskpet:start-window-drag", (event) => {
+    if (!isPetWindowSender(event)) return;
+    startPetWindowDrag();
+  });
+
+  ipcMain.on("taskpet:move-window", (event) => {
+    if (!isPetWindowSender(event)) return;
+    movePetWindowForDrag();
   });
 
   ipcMain.handle("taskpet:resize-window", (event, payload) => {
     if (!isPetWindowSender(event)) return { ok: false };
+    petDragSession = null;
     const zoom = Number(payload?.zoom);
     if (!Number.isFinite(zoom)) return { ok: false };
     return resizePetWindow(zoom);
@@ -323,6 +375,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle("taskpet:finish-drag", (event) => {
     if (!isPetWindowSender(event)) return false;
+    movePetWindowForDrag();
+    petDragSession = null;
     saveWindowBounds();
     petState.finishDrag();
     return true;
@@ -351,6 +405,8 @@ function configureMacMenuBarMode() {
   app.dock.hide();
 }
 
+// ---------- Electron 应用生命周期 ----------
+
 app.whenReady().then(() => {
   configureMacMenuBarMode();
   if (process.platform === "win32") app.setAppUserModelId(APP_ID);
@@ -365,7 +421,7 @@ app.whenReady().then(() => {
     panelPreloadPath: path.join(__dirname, "..", "build", "preload", "panel-preload.js"),
     panelHtmlPath: path.join(__dirname, "renderer", "panel", "index.html"),
     icon: createAppIcon(),
-    onPetState: (state, message) => petState.setState(state, { message }),
+    onPetState: (state, message, detail) => petState.setState(state, { message, detail }),
     onPanelReady: (ready) => markSmokeReady("panel", ready)
   });
   taskSystem.initialize();

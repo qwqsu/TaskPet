@@ -1,3 +1,7 @@
+/**
+ * task_process_rules 的 SQL 访问层。
+ * Repository 只负责持久化和 snake_case/camelCase 映射，业务限制放在 Service。
+ */
 import type { TaskDatabase } from "./database";
 import type { ProcessMatchMode, TaskProcessRule } from "../../shared/process-types";
 

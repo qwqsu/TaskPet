@@ -1,3 +1,7 @@
+/**
+ * Renderer 传入 Main Process 的任务/程序绑定参数校验。
+ * 所有 IPC 输入先经过这些 Zod schema，业务服务不能直接信任页面对象。
+ */
 import { z } from "zod";
 import { isLocalDateKey } from "./local-date";
 
@@ -21,6 +25,7 @@ function validateDuration(
   value: { completionMode: "manual" | "duration"; targetDurationSec: number },
   context: z.RefinementCtx
 ): void {
+  // completionMode 与目标时长是跨字段约束，单个 number schema 无法独立表达。
   if (value.completionMode === "duration" && value.targetDurationSec <= 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -88,6 +93,7 @@ export const SetProcessRuleInputSchema = z.object({
   executableName: executableNameSchema,
   executablePath: executablePathSchema.nullable().default(null)
 }).strict().superRefine((value, context) => {
+  // exact_path 没有路径就无法做到“精确”，因此不允许静默降级成进程名。
   if (value.matchMode === "exact_path" && !value.executablePath) {
     context.addIssue({
       code: z.ZodIssueCode.custom,

@@ -1,3 +1,7 @@
+/**
+ * 低频进程监控器。
+ * 它只负责“扫描 + 匹配 + 生命周期回调”，Session 和累计时长由 RuntimeTracker 管理。
+ */
 import type { ProcessInfo, TaskProcessRule } from "../../shared/process-types";
 import { matchProcessesForRules } from "./process-matcher";
 import type { ProcessProvider } from "./process-provider";
@@ -39,6 +43,7 @@ export class ProcessMonitor {
   private readonly now: () => Date;
   private readonly scheduler: ProcessMonitorScheduler;
   private readonly scanImmediately: boolean;
+  // 三张内存表分别表示监控目标、已匹配任务和第一次疑似退出时间，不会持久化完整进程快照。
   private readonly targets = new Map<string, ProcessWatchTarget>();
   private readonly running = new Map<string, ProcessInfo>();
   private readonly missingSince = new Map<string, Date>();
@@ -85,6 +90,7 @@ export class ProcessMonitor {
       if (target.rules.length > 0) this.targets.set(target.taskId, target);
     }
 
+    // 没有“未完成 + 已绑定程序”的任务时立即停表，降低常驻开销。
     if (this.targets.size === 0) {
       this.stopTimer();
       this.running.clear();
@@ -96,6 +102,7 @@ export class ProcessMonitor {
   }
 
   async scanNow(observedAt = this.now()): Promise<void> {
+    // 防止一次异步扫描尚未结束时启动第二次重叠扫描。
     if (this.targets.size === 0 || this.scanInFlight) return;
     this.scanInFlight = true;
 
@@ -147,12 +154,14 @@ export class ProcessMonitor {
       if (!this.running.has(target.taskId)) continue;
       const missingAt = this.missingSince.get(target.taskId);
       if (!missingAt) {
+        // 第一次消失只冻结计时并进入 suspected_exit，不立刻结束 Session。
         const firstMissingAt = new Date(observedAt.getTime());
         this.missingSince.set(target.taskId, firstMissingAt);
         this.callbacks.onSuspectedExit(target.taskId, firstMissingAt);
         continue;
       }
 
+      // 防抖期内重新出现仍算同一次连续运行；超过阈值才确认停止。
       if (observedAt.getTime() - missingAt.getTime() < this.exitDebounceMs) continue;
       this.callbacks.onStopped(target.taskId, new Date(missingAt.getTime()));
       this.running.delete(target.taskId);

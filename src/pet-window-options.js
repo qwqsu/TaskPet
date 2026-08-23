@@ -1,3 +1,7 @@
+/**
+ * 透明桌宠 BrowserWindow 的尺寸、缩放和多屏防丢失规则。
+ * 安全选项集中在这里，修改窗口外观时不要关闭 contextIsolation。
+ */
 const BASE_WINDOW_WIDTH = 240;
 const BASE_WINDOW_HEIGHT = 286;
 const MIN_ZOOM = 0.65;
@@ -14,6 +18,14 @@ function clampZoom(value) {
 function finiteCoordinate(value, fallback) {
   const coordinate = Number(value);
   return Number.isFinite(coordinate) ? Math.round(coordinate) : fallback;
+}
+
+function getPetWindowSize(zoomInput) {
+  const zoom = clampZoom(zoomInput);
+  return {
+    width: Math.round(BASE_WINDOW_WIDTH * zoom),
+    height: Math.round(BASE_WINDOW_HEIGHT * zoom)
+  };
 }
 
 function normalizeWorkArea(workArea) {
@@ -50,6 +62,7 @@ function resolveVisiblePosition({ x, y, width, height, workAreas }) {
     ? workAreas.map(normalizeWorkArea).filter(Boolean)
     : [];
 
+  // 只要至少 48px 仍可见就保留用户位置，否则召回主显示器右下角。
   if (validWorkAreas.length === 0
     || validWorkAreas.some((workArea) => isReachableFromWorkArea(candidate, workArea))) {
     return { x, y };
@@ -75,8 +88,7 @@ function createPetWindowOptions(options = {}) {
 
   const zoom = clampZoom(options.zoom);
   const savedBounds = options.savedBounds || {};
-  const width = Math.round(BASE_WINDOW_WIDTH * zoom);
-  const height = Math.round(BASE_WINDOW_HEIGHT * zoom);
+  const { width, height } = getPetWindowSize(zoom);
   const position = resolveVisiblePosition({
     x: finiteCoordinate(savedBounds.x, 40),
     y: finiteCoordinate(savedBounds.y, 220),
@@ -84,6 +96,7 @@ function createPetWindowOptions(options = {}) {
     height,
     workAreas: options.workAreas
   });
+  // 这里是 P0 桌宠壳验收的关键配置：透明、无边框、置顶、跳过任务栏。
   const windowOptions = {
     title: "TaskPet",
     width,
@@ -120,5 +133,6 @@ module.exports = {
   MIN_ZOOM,
   clampZoom,
   createPetWindowOptions,
+  getPetWindowSize,
   resolveVisiblePosition
 };

@@ -1,3 +1,7 @@
+/**
+ * Windows 进程枚举适配器。
+ * 直接通过 koffi 调用 kernel32，避免每 2~3 秒启动 PowerShell/tasklist 子进程。
+ */
 import path from "node:path";
 import koffi, { type KoffiFunc, type TypeObject } from "koffi";
 import type { ProcessInfo } from "../../shared/process-types";
@@ -40,6 +44,7 @@ export class WindowsProcessProvider implements ProcessProvider {
       throw new Error("WindowsProcessProvider is available only on Windows");
     }
 
+    // PROCESSENTRY32W 的字段布局必须与 Win32 结构一致。
     this.processEntryType = koffi.struct("TASKPET_PROCESSENTRY32W", {
       dwSize: "uint32_t",
       cntUsage: "uint32_t",
@@ -53,6 +58,7 @@ export class WindowsProcessProvider implements ProcessProvider {
       szExeFile: koffi.array("char16_t", MAX_EXE_NAME, "String")
     });
 
+    // 这里只解析一次函数地址；后续扫描复用这些 native function。
     const kernel32 = koffi.load("kernel32.dll");
     this.createSnapshot = kernel32.func(
       "CreateToolhelp32Snapshot",
@@ -87,6 +93,7 @@ export class WindowsProcessProvider implements ProcessProvider {
   }
 
   listProcesses(): ProcessInfo[] {
+    // Toolhelp 快照只在内存中遍历，返回后由 ProcessMonitor 立即做目标匹配。
     const snapshot = this.createSnapshot(TH32CS_SNAPPROCESS, 0);
     if (!snapshot || this.isInvalidHandle(snapshot)) {
       throw new Error("CreateToolhelp32Snapshot failed");
@@ -123,6 +130,7 @@ export class WindowsProcessProvider implements ProcessProvider {
   }
 
   private readExecutablePath(processId: number): string | null {
+    // 系统进程可能拒绝查询路径；此时仍返回进程名，并允许 process_name 匹配。
     const handle = this.openProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
     if (!handle) return null;
 

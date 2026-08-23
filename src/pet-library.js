@@ -1,3 +1,7 @@
+/**
+ * Codex-compatible 宠物包加载器。
+ * 从内置目录和用户目录读取 pet.json，校验 spritesheet 仍位于宠物包内部，再生成安全的 file URL。
+ */
 const fs = require("node:fs");
 const path = require("node:path");
 const { pathToFileURL } = require("node:url");
@@ -61,6 +65,7 @@ function normalizePetFrame(frame = {}) {
 }
 
 function resolveSpritesheetPath(directory, manifestPath) {
+  // 拒绝 ../ 等路径逃逸，宠物 manifest 不能读取包目录外的任意文件。
   const spritesheetPath = path.resolve(directory, manifestPath || "spritesheet.webp");
   const relative = path.relative(directory, spritesheetPath);
   if (relative.startsWith("..") || path.isAbsolute(relative)) return "";
@@ -124,6 +129,7 @@ function discoverPetsInDirectory(petsRoot, source = "pets") {
 }
 
 function discoverPets(petsRoot, options = {}) {
+  // 内置宠物排在前面，保证用户目录为空时仍有可显示的默认资源。
   const bundledPets = options.bundledPetsRoot
     ? discoverPetsInDirectory(options.bundledPetsRoot, "builtin")
     : [];
@@ -134,6 +140,7 @@ function discoverPets(petsRoot, options = {}) {
 }
 
 function toPetPayload(pet) {
+  // 只把 Renderer 绘制所需字段发送出去，不暴露整个内部对象。
   if (!pet) return null;
   return {
     id: pet.id,

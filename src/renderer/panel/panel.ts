@@ -1,3 +1,7 @@
+/**
+ * 任务面板 Renderer。
+ * 负责表单、今日/历史渲染和程序选择；数据全部通过 sandboxed preload API 获取。
+ */
 type TaskType = "daily" | "one_time";
 type CompletionMode = "manual" | "duration" | "process_start" | "process_exit";
 type OccurrenceStatus = "pending" | "active" | "completed";
@@ -114,6 +118,8 @@ interface TaskPetPanelWindow extends Window {
   };
 }
 
+// ---------- DOM/IPC 边界辅助函数 ----------
+
 function elementById<T extends HTMLElement>(id: string): T {
   const element = document.getElementById(id);
   if (!element) throw new Error(`Missing panel element: ${id}`);
@@ -153,6 +159,8 @@ function formatDuration(seconds: number): string {
   if (remainingSeconds > 0 || parts.length === 0) parts.push(`${remainingSeconds} 秒`);
   return parts.join(" ");
 }
+
+// ---------- preload API、DOM 引用和页面内存状态 ----------
 
 const panelWindow = window as unknown as TaskPetPanelWindow;
 const taskApi = panelWindow.taskPet.tasks;
@@ -194,11 +202,14 @@ let rulesByTask = new Map<string, TaskProcessRule[]>();
 let runtimeByOccurrence = new Map<string, RuntimeTaskSnapshot>();
 let selectedProgram: RunningProgram | null = null;
 
+// ---------- 今日任务与历史渲染 ----------
+
 function setStatus(message = ""): void {
   statusMessage.textContent = message;
 }
 
 function taskMeta(item: TaskListItem): string {
+  // active 任务优先使用 RuntimeTracker 的内存快照，因此界面能每秒变化而不查 SQLite。
   const runtime = runtimeByOccurrence.get(item.occurrence.id);
   const accumulatedSec = runtime?.accumulatedSec ?? item.occurrence.accumulatedSec;
   const pieces = [item.task.taskType === "daily" ? "每日" : "一次性"];
@@ -338,6 +349,8 @@ function renderHistory(days: HistoryDay[]): void {
   historyList.replaceChildren(fragment);
 }
 
+// ---------- 从 Main Process 刷新数据 ----------
+
 function groupRules(rules: TaskProcessRule[]): Map<string, TaskProcessRule[]> {
   const grouped = new Map<string, TaskProcessRule[]>();
   for (const rule of rules) {
@@ -349,6 +362,7 @@ function groupRules(rules: TaskProcessRule[]): Map<string, TaskProcessRule[]> {
 }
 
 async function refreshToday(): Promise<void> {
+  // 三组相互独立的数据并行读取，最后以 taskId/occurrenceId 在页面内关联。
   setStatus();
   const [itemsResult, rulesResult, runtimeResult] = await Promise.all([
     taskApi.listToday(),
@@ -383,6 +397,8 @@ async function changeCompletion(item: TaskListItem, complete: boolean): Promise<
     await refreshToday().catch(() => undefined);
   }
 }
+
+// ---------- 任务表单与程序绑定 ----------
 
 function syncDurationField(): void {
   const isDuration = completionMode.value === "duration";
@@ -444,6 +460,7 @@ function renderRunningPrograms(programs: RunningProgram[]): void {
 }
 
 async function chooseRunningProgram(): Promise<void> {
+  // 这里只显示一次即时快照，TaskPet 不保存未绑定程序的历史。
   try {
     runningProgramPicker.classList.remove("hidden");
     runningProgramList.replaceChildren(emptyState("正在读取", "只读取当前快照，不保存无关进程。"));
@@ -545,6 +562,7 @@ async function saveTask(event: SubmitEvent): Promise<void> {
       }));
       taskId = task.id;
     }
+    // Task 先保存成功，再为得到的 taskId 更新程序规则。
     await saveProgramBinding(taskId);
     closeTaskDialog();
     await refreshToday();
@@ -587,6 +605,8 @@ async function switchView(view: "today" | "history"): Promise<void> {
   }
 }
 
+// ---------- 用户事件、Main 推送订阅与初始化 ----------
+
 addTaskButton.addEventListener("click", () => openTaskDialog());
 completionMode.addEventListener("change", syncDurationField);
 taskForm.addEventListener("submit", (event) => void saveTask(event));
@@ -615,6 +635,7 @@ const unsubscribeStored = taskApi.onChanged(() => {
 });
 
 const unsubscribeRuntime = runtimeApi.onChanged((snapshots) => {
+  // 每秒只重绘当前列表，不重新请求任务和绑定规则。
   runtimeByOccurrence = new Map(
     snapshots.map((snapshot) => [snapshot.occurrenceId, snapshot])
   );

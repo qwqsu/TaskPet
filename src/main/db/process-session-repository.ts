@@ -1,3 +1,7 @@
+/**
+ * process_sessions 的 SQL 访问层。
+ * checkpoint 更新恢复点；finalize 只允许把尚未结束的 Session 收尾一次。
+ */
 import type { TaskDatabase } from "./database";
 import type { ProcessSession } from "../../shared/process-types";
 

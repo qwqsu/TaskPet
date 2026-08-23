@@ -1,3 +1,7 @@
+/**
+ * 本地日期键工具。
+ * 数据库存 ISO 时间戳，但 daily occurrence 按用户当前时区的 YYYY-MM-DD 分组。
+ */
 const DATE_KEY_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 export function toLocalDateKey(date: Date): string {
@@ -14,6 +18,7 @@ export function isLocalDateKey(value: string): boolean {
   const year = Number(match[1]);
   const month = Number(match[2]);
   const day = Number(match[3]);
+  // 再构造一次 Date，可排除 2026-02-31 这类格式正确但实际不存在的日期。
   const date = new Date(year, month - 1, day);
 
   return date.getFullYear() === year

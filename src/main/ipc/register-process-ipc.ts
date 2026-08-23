@@ -1,3 +1,7 @@
+/**
+ * 注册程序绑定、程序选择和运行快照 IPC。
+ * 每次请求都依次验证发送窗口、Zod 输入，再调用 Main Process 服务。
+ */
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import type { ZodTypeAny } from "zod";
 import {
@@ -48,6 +52,7 @@ function asFailure<T>(error: unknown): TaskApiResult<T> {
 export function registerProcessIpc(options: RegisterProcessIpcOptions): () => void {
   const registeredChannels: string[] = [];
 
+  // 用一个包装器统一安全检查和错误格式，避免某个新频道漏掉校验。
   function handle<InputSchema extends ZodTypeAny, Output>(
     channel: string,
     schema: InputSchema,
@@ -94,6 +99,7 @@ export function registerProcessIpc(options: RegisterProcessIpcOptions): () => vo
   });
 
   handle(PROCESS_CHANNELS.listRunning, EmptyTaskInputSchema, async () => {
+    // 只把当前快照聚合后返回页面；无关进程不会写入数据库。
     return toRunningPrograms(await options.processProvider.listProcesses());
   });
 
@@ -105,6 +111,7 @@ export function registerProcessIpc(options: RegisterProcessIpcOptions): () => vo
     return options.runtimeSnapshots();
   });
 
+  // TaskSystem 关闭时解除 handler，测试重建系统时也不会重复注册。
   return () => {
     for (const channel of registeredChannels) options.ipcMain.removeHandler(channel);
   };

@@ -1,3 +1,7 @@
+/**
+ * 程序绑定业务层。
+ * 校验任务可编辑、规范化 Windows 路径，并以“每个任务当前一条规则”方式原子替换。
+ */
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import type { TaskDatabase } from "../db/database";
@@ -57,6 +61,7 @@ export class ProcessRuleService {
       ? path.win32.basename(executablePath)
       : path.win32.basename(parsed.executableName);
 
+    // 删除旧规则和插入新规则必须同事务，避免中途失败后丢失绑定。
     return this.rules.transaction(() => {
       this.rules.deleteForTask(parsed.taskId);
       return this.rules.insert({

@@ -1,3 +1,7 @@
+/**
+ * 任务子系统总协调器。
+ * 组装 SQLite、Service、IPC、ProcessMonitor、RuntimeTracker、PetStateMachine 和任务面板窗口。
+ */
 import path from "node:path";
 import {
   BrowserWindow,
@@ -40,7 +44,7 @@ export interface TaskSystemOptions {
   panelPreloadPath: string;
   panelHtmlPath: string;
   icon?: NativeImage;
-  onPetState: (state: RuntimePetState, message: string) => void;
+  onPetState: (state: RuntimePetState, message: string, detail?: string) => void;
   onPanelReady?: (ready: boolean) => void;
   processProvider?: ProcessProvider;
 }
@@ -63,6 +67,7 @@ export class TaskSystem {
   private closing = false;
 
   constructor(private readonly options: TaskSystemOptions) {
+    // 依赖在 Main Process 内组装；Renderer 只能看到 preload 暴露的最小 API。
     this.database = openTaskDatabase(options.databasePath);
     this.service = new TaskService(this.database);
     this.ruleService = new ProcessRuleService(this.database);
@@ -70,7 +75,7 @@ export class TaskSystem {
     this.events = new TaskEventBus();
     this.runtime = new RuntimeTracker(this.database, this.events);
     this.petStateMachine = new PetStateMachine(this.events, {
-      setState: (state, message) => this.options.onPetState(state, message)
+      setState: (state, message, detail) => this.options.onPetState(state, message, detail)
     });
     this.monitor = new ProcessMonitor(this.processProvider, {
       onStarted: (taskId, processInfo, observedAt) => {
@@ -89,6 +94,7 @@ export class TaskSystem {
   }
 
   initialize(): void {
+    // 初始化顺序：恢复旧 Session → 注册 IPC → 创建面板 → 建立监控目标 → 安排跨日刷新。
     const recovered = this.runtime.recoverStaleSessions();
     if (recovered > 0) {
       console.info(`TaskPet recovered ${recovered} unfinished process session(s)`);
@@ -156,6 +162,7 @@ export class TaskSystem {
   }
 
   close(): void {
+    // 先停止产生新事件的 timer/monitor，再销毁 IPC、窗口和数据库连接。
     this.closing = true;
     if (this.midnightTimer) clearTimeout(this.midnightTimer);
     this.midnightTimer = null;
@@ -195,6 +202,7 @@ export class TaskSystem {
     this.broadcastRuntime();
     if (event.type !== "TASK_PROGRESS") this.broadcastChanged();
     if (event.type === "TASK_COMPLETED") {
+      // 等完成事件当前调用栈结束后再移除监控目标，避免修改正在遍历的数据。
       queueMicrotask(() => {
         if (!this.closing) this.reconcileWatchTargets();
       });
@@ -202,6 +210,7 @@ export class TaskSystem {
   }
 
   private reconcileWatchTargets(): void {
+    // 只监控“今日未完成且存在程序规则”的任务；空列表会让 ProcessMonitor 自动停表。
     const rulesByTask = new Map<string, TaskProcessRule[]>();
     for (const rule of this.ruleService.listRules()) {
       const rules = rulesByTask.get(rule.taskId) ?? [];
@@ -219,6 +228,7 @@ export class TaskSystem {
   }
 
   private async pickWindowsExecutable(): Promise<RunningProgram | null> {
+    // 文件选择器只允许用户明确选择 .exe，不接受 Renderer 传来的任意 shell command。
     if (process.platform !== "win32") return null;
     const dialogOptions = {
       title: "选择要绑定的 Windows 程序",
@@ -240,6 +250,7 @@ export class TaskSystem {
   }
 
   private scheduleMidnightRefresh(): void {
+    // 00:00 后刷新 daily occurrence 和 watch targets；100ms 偏移避免卡在边界前。
     if (this.midnightTimer) clearTimeout(this.midnightTimer);
     const now = new Date();
     const nextMidnight = new Date(
@@ -284,6 +295,7 @@ export class TaskSystem {
   }
 
   private positionPanel(anchorBounds?: Rectangle | null): void {
+    // 优先放在桌宠左侧，空间不足再放右侧，最后限制在当前显示器工作区内。
     if (!this.panelWindow || this.panelWindow.isDestroyed()) return;
 
     const display = anchorBounds
@@ -308,6 +320,7 @@ export class TaskSystem {
   }
 
   private isPanelSender(event: { sender: WebContents }): boolean {
+    // IPC 不仅校验参数，还必须确认请求确实来自当前任务面板 WebContents。
     return Boolean(
       this.panelWindow
       && !this.panelWindow.isDestroyed()

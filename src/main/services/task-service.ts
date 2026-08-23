@@ -1,3 +1,7 @@
+/**
+ * Task / TaskOccurrence 的业务服务。
+ * 负责 daily/one_time、lazy materialization、归档、手动完成/重开和历史分组。
+ */
 import { randomUUID } from "node:crypto";
 import type { TaskDatabase } from "../db/database";
 import { TaskRepository } from "../db/task-repository";
@@ -55,6 +59,7 @@ export class TaskService {
     const timestamp = now.toISOString();
     const occurrenceDate = toLocalDateKey(now);
 
+    // 一次性任务立即创建唯一 occurrence；daily 等到当天首次读取时再创建。
     return this.repository.transaction(() => {
       const task = this.repository.insertTask({
         id: this.idFactory(),
@@ -98,6 +103,7 @@ export class TaskService {
       throw new TaskServiceError("CONFLICT", "已归档任务不能再编辑");
     }
 
+    // 切换完成方式时同步修正目标时长，避免 manual 携带无意义 duration。
     const nextCompletionMode = parsed.patch.completionMode ?? task.completionMode;
     let nextTargetDuration = parsed.patch.targetDurationSec ?? task.targetDurationSec;
 
@@ -135,6 +141,7 @@ export class TaskService {
     }
 
     const timestamp = this.clock.now().toISOString();
+    // 可重复调用：Repository 的 UNIQUE + ON CONFLICT 会确保每天每任务只有一条。
     return this.repository.transaction(() => {
       let inserted = 0;
       for (const task of this.repository.listMaterializableDailyTasks()) {
@@ -160,6 +167,7 @@ export class TaskService {
     const today = toLocalDateKey(this.clock.now());
     this.ensureTodayOccurrences(today);
 
+    // 已完成的一次性任务只在完成当天继续显示，之后从“今日”隐藏但保留历史。
     return this.repository.listTodayCandidates(today).filter((item) => {
       if (item.task.taskType === "daily") return true;
       if (item.occurrence.status !== "completed") return true;
@@ -174,6 +182,7 @@ export class TaskService {
 
     for (const item of this.repository.listCompletedItems()) {
       if (!item.occurrence.completedAt) continue;
+      // daily 按 occurrenceDate；one_time 按真正 completedAt 的本地日期归档。
       const historyDate = item.task.taskType === "daily"
         ? item.occurrence.occurrenceDate
         : localDateKeyFromIso(item.occurrence.completedAt);
@@ -190,6 +199,7 @@ export class TaskService {
   }
 
   completeOccurrence(occurrenceId: string): OccurrenceMutationResult {
+    // changed 让 IPC 可以避免重复广播和重复播放 done 动画。
     return this.repository.transaction(() => {
       const before = this.requireEditableOccurrence(occurrenceId);
       if (before.occurrence.status === "completed") {

@@ -4,7 +4,8 @@ const {
   MAX_ZOOM,
   MIN_ZOOM,
   clampZoom,
-  createPetWindowOptions
+  createPetWindowOptions,
+  getPetWindowSize
 } = require("../src/pet-window-options");
 
 test("pet window keeps the required transparent shell flags", () => {
@@ -44,6 +45,11 @@ test("pet window zoom and default coordinates are bounded", () => {
   assert.equal(fallback.x, 40);
   assert.equal(fallback.y, 220);
   assert.throws(() => createPetWindowOptions(), /preloadPath is required/);
+});
+
+test("pet window size has one zoom calculation for create, resize, and drag", () => {
+  assert.deepEqual(getPetWindowSize(0.6666665243935752), { width: 160, height: 191 });
+  assert.deepEqual(getPetWindowSize(1), { width: 240, height: 286 });
 });
 
 test("pet window returns an unreachable saved position to the primary display", () => {

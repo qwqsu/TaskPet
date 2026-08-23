@@ -12,6 +12,7 @@ test("package and builder use the temporary TaskPet identity", () => {
   assert.equal(packageJson.name, "taskpet");
   assert.equal(packageJson.version, "0.3.0-p2");
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), ["better-sqlite3", "koffi", "zod"]);
+  assert.equal(packageJson.scripts["dev:bounds"], "npm run compile && electron . --debug-pet-bounds");
   assert.equal(packageJson.scripts.smoke, "npm run compile && electron . --smoke-test");
   assert.equal(Object.keys(packageJson.scripts).some((name) => name.startsWith("hooks:")), false);
   assert.match(builder, /^appId: com\.taskpet\.shell$/m);

@@ -1,3 +1,7 @@
+/**
+ * 系统进程来源的跨平台接口。
+ * 当前 Windows 有原生实现，其他平台返回空列表以保证应用仍能启动。
+ */
 import type { ProcessInfo, RunningProgram } from "../../shared/process-types";
 
 export interface ProcessProvider {
@@ -18,6 +22,7 @@ export function createPlatformProcessProvider(): ProcessProvider {
 }
 
 export function toRunningPrograms(processes: readonly ProcessInfo[]): RunningProgram[] {
+  // 同一路径/名称的多个 PID 合并成一个选择项，但保留 pidCount 给用户解释。
   const groups = new Map<string, RunningProgram>();
 
   for (const processInfo of processes) {

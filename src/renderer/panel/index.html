@@ -1,4 +1,5 @@
 <!doctype html>
+<!-- 任务面板 Renderer：今日任务、历史记录和任务编辑对话框。 -->
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -13,6 +14,7 @@
   </head>
   <body>
     <main class="app-shell">
+      <!-- 页面标题、完成摘要和添加任务入口。 -->
       <header class="app-header">
         <div>
           <p class="eyebrow">TASKPET</p>
@@ -22,6 +24,7 @@
         <button id="addTaskButton" class="primary-button" type="button">＋ 添加</button>
       </header>
 
+      <!-- 首版只保留今日与历史两个页面。 -->
       <nav class="tabs" aria-label="任务页面">
         <button class="tab active" type="button" data-view="today" aria-selected="true">今日</button>
         <button class="tab" type="button" data-view="history" aria-selected="false">历史</button>
@@ -29,6 +32,7 @@
 
       <p id="statusMessage" class="status-message" role="status" aria-live="polite"></p>
 
+      <!-- 列表卡片由 panel.ts 动态创建，HTML 只提供挂载点。 -->
       <section id="todayView" class="view" aria-labelledby="pageTitle">
         <div id="todayList" class="task-list"></div>
       </section>
@@ -38,6 +42,7 @@
       </section>
     </main>
 
+    <!-- 添加和编辑共用同一个 dialog；editingTaskId 是否为空用于区分模式。 -->
     <dialog id="taskDialog" class="task-dialog">
       <form id="taskForm" method="dialog">
         <div class="dialog-heading">
@@ -85,6 +90,7 @@
           <small>绑定程序运行期间累计；关闭后暂停，下次启动继续。</small>
         </label>
 
+        <!-- 程序绑定可选择当前快照或由系统文件选择器选择 exe。 -->
         <section class="program-binding" aria-labelledby="programBindingTitle">
           <div class="binding-heading">
             <div>
