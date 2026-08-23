@@ -2,9 +2,9 @@
 
 TaskPet 是一个本地优先的桌面任务助手，以常驻桌宠作为低打扰交互入口。
 
-当前分支只实现 P0 桌宠 Shell，明确不包含 Task CRUD、SQLite、进程监控、运行时计时、提醒、Agent Hook、本地 HTTP API 或自动更新。
+当前分支实现到 P1：在 P0 桌宠 Shell 上加入本地 SQLite 任务系统和任务面板。仍不包含进程监控、运行时自动计时、提醒、Agent Hook、本地 HTTP API 或自动更新。
 
-## P0 已保留能力
+## 当前能力
 
 - Electron 透明、无边框桌宠窗口
 - 始终置顶，并跳过普通任务栏
@@ -14,6 +14,11 @@ TaskPet 是一个本地优先的桌面任务助手，以常驻桌宠作为低打
 - 内置宠物和 `~/.codex/pets` 下的 Codex-compatible spritesheet
 - 六个状态：`idle`、`working`、`done`、`attention`、`drag-left`、`drag-right`
 - `contextIsolation: true`、`nodeIntegration: false`
+- 单击桌宠或使用 tray 打开今日任务面板
+- `daily` / `one_time` 任务的创建、编辑和归档
+- 每日 occurrence 惰性生成，一次性任务使用永久 occurrence
+- 手动完成、取消完成，以及最近 30 天的简单历史
+- Main Process 中的 SQLite migration、TaskService 和 Zod IPC 校验
 
 ## 本地开发
 
@@ -24,7 +29,7 @@ npm run smoke
 npm run build:unpack
 ```
 
-`npm run smoke` 会实际加载 Electron renderer，但不显示桌宠；加载成功后自动退出。
+`npm run smoke` 会实际初始化桌宠 Renderer、任务面板 Renderer 和 SQLite，但不显示窗口；三者加载成功后自动退出。
 
 ## 宠物包格式
 
@@ -58,19 +63,16 @@ TaskPet 使用图集第 0、1、2、3、4、7 行分别承载六个状态。未�
 
 ```text
 Electron Main
-├── 桌宠窗口与 tray
-├── 本地 Shell 设置
-├── 宠物资源发现
-└── PetStateController  ← 后续 Task 事件接入点
-          ↓
-       Preload
-          ↓
-       Renderer
+├── 桌宠窗口、tray、宠物资源与 PetStateController
+├── SQLite migration / TaskRepository
+└── TaskService + Zod IPC
+       ├── 桌宠 Preload → spritesheet Renderer
+       └── 面板 Preload → 今日任务 / 历史 Renderer
 ```
 
-系统能力只存在于 Main Process。Preload 仅暴露窗口移动、缩放、初始状态和只读事件订阅，Renderer 不直接访问文件系统、子进程或本地数据库。
+系统能力只存在于 Main Process。两个 Preload 分别暴露最小 API，Renderer 不直接访问文件系统、子进程或本地数据库。任务数据库位于 Electron `userData/taskpet.sqlite3`。
 
-P1 可以在 Main Process 中加入带参数校验的 `TaskService` IPC，并把任务事件映射到 `PetStateController`；无需改动桌宠窗口壳或 spritesheet renderer。
+P2 可以在 Main Process 新增独立 `ProcessMonitor`，把进程事件交给现有 `TaskService`；Renderer、SQLite 和桌宠状态机都不需要直接访问系统进程列表。
 
 ## 来源与资源说明
 

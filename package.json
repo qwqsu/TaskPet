@@ -1,17 +1,20 @@
 {
   "name": "taskpet",
-  "version": "0.1.0-p0",
+  "version": "0.2.0-p1",
   "description": "Local-first desktop task assistant shell with a persistent animated pet.",
   "main": "src/main.js",
   "scripts": {
-    "start": "electron .",
-    "dev": "electron .",
-    "smoke": "electron . --smoke-test",
-    "build": "npm test && electron-builder --dir",
-    "build:unpack": "electron-builder --dir",
-    "build:win": "electron-builder --win --publish never",
-    "build:mac": "electron-builder --mac --universal --publish never",
-    "test": "node --test"
+    "compile": "tsc -p tsconfig.json",
+    "compile:test": "tsc -p tsconfig.test.json",
+    "start": "npm run compile && electron .",
+    "dev": "npm run compile && electron .",
+    "smoke": "npm run compile && electron . --smoke-test",
+    "build": "npm test && npm run compile && electron-builder --dir",
+    "build:unpack": "npm run compile && electron-builder --dir",
+    "build:win": "npm run compile && electron-builder --win --publish never",
+    "build:mac": "npm run compile && electron-builder --mac --universal --publish never",
+    "test": "npm run compile:test && node scripts/run-tests.cjs",
+    "postinstall": "electron-builder install-app-deps"
   },
   "keywords": [
     "taskpet",
@@ -21,8 +24,15 @@
   ],
   "author": "TaskPet contributors",
   "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "9.4.3",
+    "zod": "3.23.8"
+  },
   "devDependencies": {
+    "@types/better-sqlite3": "7.6.9",
+    "@types/node": "18.19.31",
     "electron": "28.2.9",
-    "electron-builder": "^24.13.3"
+    "electron-builder": "^24.13.3",
+    "typescript": "5.4.5"
   }
 }

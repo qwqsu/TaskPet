@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TaskPet 任务</title>
+    <link rel="icon" type="image/png" href="../../assets/logo.png" />
+    <link rel="stylesheet" href="./panel.css" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div>
+          <p class="eyebrow">TASKPET</p>
+          <h1 id="pageTitle">今日任务</h1>
+          <p id="todaySummary" class="summary">正在读取本地任务…</p>
+        </div>
+        <button id="addTaskButton" class="primary-button" type="button">＋ 添加</button>
+      </header>
+
+      <nav class="tabs" aria-label="任务页面">
+        <button class="tab active" type="button" data-view="today" aria-selected="true">今日</button>
+        <button class="tab" type="button" data-view="history" aria-selected="false">历史</button>
+      </nav>
+
+      <p id="statusMessage" class="status-message" role="status" aria-live="polite"></p>
+
+      <section id="todayView" class="view" aria-labelledby="pageTitle">
+        <div id="todayList" class="task-list"></div>
+      </section>
+
+      <section id="historyView" class="view hidden" aria-label="最近 30 天历史">
+        <div id="historyList" class="history-list"></div>
+      </section>
+    </main>
+
+    <dialog id="taskDialog" class="task-dialog">
+      <form id="taskForm" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">TASK</p>
+            <h2 id="dialogTitle">添加任务</h2>
+          </div>
+          <button id="cancelTaskButton" class="icon-button" type="button" aria-label="关闭">×</button>
+        </div>
+
+        <input id="editingTaskId" type="hidden" />
+
+        <label class="field">
+          <span>标题</span>
+          <input id="taskTitle" name="title" type="text" maxlength="120" required autofocus />
+        </label>
+
+        <label class="field">
+          <span>描述 <small>可选</small></span>
+          <textarea id="taskDescription" name="description" maxlength="2000" rows="3"></textarea>
+        </label>
+
+        <div class="field-grid">
+          <label class="field">
+            <span>类型</span>
+            <select id="taskType" name="taskType">
+              <option value="daily">每日</option>
+              <option value="one_time">一次性</option>
+            </select>
+            <small id="taskTypeHint" class="field-hint hidden">创建后类型不可修改</small>
+          </label>
+
+          <label class="field">
+            <span>完成方式</span>
+            <select id="completionMode" name="completionMode">
+              <option value="duration">目标时长</option>
+              <option value="manual">手动勾选</option>
+            </select>
+          </label>
+        </div>
+
+        <label id="durationField" class="field">
+          <span>目标分钟数</span>
+          <input id="targetMinutes" name="targetMinutes" type="number" min="1" max="100000" value="25" />
+          <small>本阶段可手动勾选；自动计时将在后续接入。</small>
+        </label>
+
+        <div class="dialog-actions">
+          <button id="archiveTaskButton" class="danger-button hidden" type="button">归档</button>
+          <span class="action-spacer"></span>
+          <button id="dismissTaskButton" class="secondary-button" type="button">取消</button>
+          <button class="primary-button" type="submit">保存</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="../../../build/renderer/panel/panel.js"></script>
+  </body>
+</html>

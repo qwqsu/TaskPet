@@ -8,6 +8,7 @@ directories:
 
 files:
   - src/**
+  - build/**
   - package.json
   - LICENSE
   - README.md
@@ -19,6 +20,8 @@ files:
   - '!scripts/**'
 
 asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/**
 
 win:
   executableName: TaskPet
@@ -52,4 +55,4 @@ mac:
   gatekeeperAssess: false
   notarize: false
 
-npmRebuild: false
+npmRebuild: true

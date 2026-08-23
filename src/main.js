@@ -16,6 +16,7 @@ const {
   clampZoom,
   createPetWindowOptions
 } = require("./pet-window-options");
+const { TaskSystem } = require("../build/main/task-system");
 
 const APP_NAME = "TaskPet";
 const APP_ID = "com.taskpet.shell";
@@ -30,10 +31,42 @@ let pets = [];
 let activePet = null;
 let settings = {};
 let smokeTimeout = null;
+let doneStateTimeout = null;
+let taskSystem = null;
+const smokeReady = { pet: false, panel: false };
 
 const petState = new PetStateController({
   onChange: (state) => broadcastPetState(state)
 });
+
+function markSmokeReady(component, ready = true) {
+  if (!IS_SMOKE_TEST) return;
+  if (!ready) {
+    console.error(`TaskPet smoke test failed while initializing ${component}`);
+    app.exit(1);
+    return;
+  }
+
+  smokeReady[component] = true;
+  if (!smokeReady.pet || !smokeReady.panel) return;
+  clearTimeout(smokeTimeout);
+  smokeTimeout = null;
+  console.log("TaskPet smoke test ready (pet + task panel + SQLite)");
+  setTimeout(() => app.quit(), 100);
+}
+
+function celebrateTaskCompletion(title) {
+  clearTimeout(doneStateTimeout);
+  petState.setState("done", { message: `已完成：${title}` });
+  doneStateTimeout = setTimeout(() => {
+    doneStateTimeout = null;
+    petState.setState("idle");
+  }, 2500);
+}
+
+function petWindowBounds() {
+  return petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null;
+}
 
 app.setName(APP_NAME);
 
@@ -225,6 +258,11 @@ function petTrayItems() {
 function buildTrayMenu() {
   return Menu.buildFromTemplate([
     {
+      label: "打开任务面板",
+      click: () => taskSystem?.showPanel(petWindowBounds())
+    },
+    { type: "separator" },
+    {
       label: "显示 / 隐藏桌宠",
       click: () => {
         if (!petWindow || petWindow.isDestroyed()) return;
@@ -293,6 +331,12 @@ function registerIpcHandlers() {
     return true;
   });
 
+  ipcMain.handle("taskpet:toggle-task-panel", (event) => {
+    if (!isPetWindowSender(event) || !taskSystem) return false;
+    taskSystem.togglePanel(petWindowBounds());
+    return true;
+  });
+
   ipcMain.on("taskpet:drag-direction", (event, direction) => {
     if (!isPetWindowSender(event) || (direction !== "drag-left" && direction !== "drag-right")) return;
     petState.startDrag(direction);
@@ -300,10 +344,7 @@ function registerIpcHandlers() {
 
   ipcMain.on("taskpet:renderer-ready", (event) => {
     if (!IS_SMOKE_TEST || !petWindow || event.sender !== petWindow.webContents) return;
-    clearTimeout(smokeTimeout);
-    smokeTimeout = null;
-    console.log("TaskPet smoke test ready");
-    setTimeout(() => app.quit(), 100);
+    markSmokeReady("pet");
   });
 }
 
@@ -320,6 +361,17 @@ app.whenReady().then(() => {
   discoverPets();
   registerIpcHandlers();
   createPetWindow();
+  taskSystem = new TaskSystem({
+    databasePath: IS_SMOKE_TEST
+      ? ":memory:"
+      : path.join(app.getPath("userData"), "taskpet.sqlite3"),
+    panelPreloadPath: path.join(__dirname, "..", "build", "preload", "panel-preload.js"),
+    panelHtmlPath: path.join(__dirname, "renderer", "panel", "index.html"),
+    icon: createAppIcon(),
+    onCompleted: (title) => celebrateTaskCompletion(title),
+    onPanelReady: (ready) => markSmokeReady("panel", ready)
+  });
+  taskSystem.initialize();
   createTray();
   if (IS_SMOKE_TEST) {
     smokeTimeout = setTimeout(() => {
@@ -343,5 +395,8 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   clearTimeout(smokeTimeout);
+  clearTimeout(doneStateTimeout);
   saveWindowBounds();
+  taskSystem?.close();
+  taskSystem = null;
 });

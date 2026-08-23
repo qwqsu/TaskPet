@@ -170,7 +170,8 @@ async function startDrag(event) {
     startScreenY: event.screenY,
     lastScreenX: event.screenX,
     windowX: bounds.x,
-    windowY: bounds.y
+    windowY: bounds.y,
+    moved: false
   };
   lastDragDirection = null;
 }
@@ -179,6 +180,7 @@ function moveDrag(event) {
   if (!dragStart || event.pointerId !== dragStart.pointerId) return;
   const dx = event.screenX - dragStart.startScreenX;
   const dy = event.screenY - dragStart.startScreenY;
+  if (Math.abs(dx) >= 5 || Math.abs(dy) >= 5) dragStart.moved = true;
   const stepX = event.screenX - dragStart.lastScreenX;
   dragStart.lastScreenX = event.screenX;
 
@@ -197,9 +199,11 @@ function moveDrag(event) {
 
 function endDrag(event) {
   if (!dragStart || event.pointerId !== dragStart.pointerId) return;
+  const wasClick = !dragStart.moved;
   dragStart = null;
   lastDragDirection = null;
   window.taskPet.finishDrag();
+  if (wasClick) window.taskPet.toggleTaskPanel();
 }
 
 function showResizeHandle() {

@@ -10,12 +10,16 @@ test("package and builder use the temporary TaskPet identity", () => {
   const builder = fs.readFileSync(path.join(root, "electron-builder.yml"), "utf8");
 
   assert.equal(packageJson.name, "taskpet");
-  assert.equal(packageJson.dependencies, undefined);
-  assert.equal(packageJson.scripts.smoke, "electron . --smoke-test");
+  assert.equal(packageJson.version, "0.2.0-p1");
+  assert.deepEqual(Object.keys(packageJson.dependencies).sort(), ["better-sqlite3", "zod"]);
+  assert.equal(packageJson.scripts.smoke, "npm run compile && electron . --smoke-test");
   assert.equal(Object.keys(packageJson.scripts).some((name) => name.startsWith("hooks:")), false);
   assert.match(builder, /^appId: com\.taskpet\.shell$/m);
   assert.match(builder, /^productName: TaskPet$/m);
   assert.match(builder, /^  signAndEditExecutable: false$/m);
+  assert.match(builder, /^  - build\/\*\*$/m);
+  assert.match(builder, /^asarUnpack:/m);
+  assert.match(builder, /^npmRebuild: true$/m);
   assert.doesNotMatch(builder, /^publish:/m);
   assert.doesNotMatch(builder, /yangbuyiya\/desktop-pet/);
 });

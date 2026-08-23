@@ -13,6 +13,7 @@ contextBridge.exposeInMainWorld("taskPet", {
   moveWindow: (point) => ipcRenderer.invoke("taskpet:move-window", point),
   resizeWindow: (payload) => ipcRenderer.invoke("taskpet:resize-window", payload),
   finishDrag: () => ipcRenderer.invoke("taskpet:finish-drag"),
+  toggleTaskPanel: () => ipcRenderer.invoke("taskpet:toggle-task-panel"),
   setDragDirection: (direction) => ipcRenderer.send("taskpet:drag-direction", direction),
   rendererReady: () => ipcRenderer.send("taskpet:renderer-ready"),
   onStateChange: (callback) => subscribe("taskpet:state-changed", callback),

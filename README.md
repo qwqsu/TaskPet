@@ -2,9 +2,9 @@
 
 TaskPet is a local-first desktop task assistant that uses a small animated pet as its persistent entry point.
 
-This branch contains the P0 pet shell only. It intentionally does not include task CRUD, SQLite, process monitoring, runtime tracking, reminders, Agent hooks, a local HTTP API, or automatic updates.
+This branch implements P1: a local SQLite task system and task panel on top of the P0 pet shell. It still excludes process monitoring, automatic runtime tracking, reminders, Agent hooks, a local HTTP API, and automatic updates.
 
-## P0 capabilities
+## Current capabilities
 
 - Transparent, frameless Electron pet window
 - Always on top and hidden from the regular taskbar
@@ -14,6 +14,11 @@ This branch contains the P0 pet shell only. It intentionally does not include ta
 - Bundled and `~/.codex/pets` Codex-compatible spritesheets
 - Six TaskPet states: `idle`, `working`, `done`, `attention`, `drag-left`, and `drag-right`
 - Isolated renderer with `contextIsolation: true` and `nodeIntegration: false`
+- Open the Today panel by clicking the pet or using the tray
+- Create, edit, and archive `daily` and `one_time` tasks
+- Lazy daily occurrences and one permanent occurrence per one-time task
+- Manual complete/reopen and a simple 30-day history
+- Main-process SQLite migrations, TaskService, and Zod-validated IPC
 
 ## Development
 
@@ -24,7 +29,7 @@ npm run smoke
 npm run build:unpack
 ```
 
-The smoke command loads the Electron renderer without showing the pet and exits automatically after startup succeeds.
+The smoke command initializes the pet renderer, task-panel renderer, and SQLite without showing a window, then exits automatically.
 
 ## Pet packages
 
@@ -58,19 +63,16 @@ TaskPet uses rows 0, 1, 2, 3, 4, and 7 for its six states. Missing frame metadat
 
 ```text
 Electron main
-├── pet window and tray
-├── local shell settings
-├── pet resource discovery
-└── PetStateController  ← P1/P2/P3 task events connect here
-          ↓
-       preload
-          ↓
-       renderer
+├── pet window, tray, pet library, and PetStateController
+├── SQLite migrations / TaskRepository
+└── TaskService + Zod IPC
+       ├── pet preload → spritesheet renderer
+       └── panel preload → Today / History renderer
 ```
 
-System capabilities stay in the main process. The preload exposes only window movement, resizing, initial state, and read-only renderer subscriptions.
+System capabilities stay in the main process. Separate preloads expose the minimum API needed by each renderer; neither renderer can access the filesystem, child processes, or SQLite. Task data is stored under Electron's `userData/taskpet.sqlite3`.
 
-The next phase can add `TaskService` behind validated main-process IPC and map task events to `PetStateController`, without changing the spritesheet renderer or window shell.
+P2 can add an independent main-process `ProcessMonitor` and pass its events to the existing `TaskService`; renderers, SQLite, and the pet state machine do not need direct process-list access.
 
 ## Origin and assets
 
