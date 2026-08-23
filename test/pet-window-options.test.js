@@ -45,3 +45,39 @@ test("pet window zoom and default coordinates are bounded", () => {
   assert.equal(fallback.y, 220);
   assert.throws(() => createPetWindowOptions(), /preloadPath is required/);
 });
+
+test("pet window returns an unreachable saved position to the primary display", () => {
+  const options = createPetWindowOptions({
+    preloadPath: "preload.js",
+    savedBounds: { x: 1424, y: -1132 },
+    workAreas: [
+      { x: 0, y: 0, width: 1920, height: 1040 },
+      { x: -1280, y: 0, width: 1280, height: 1024 }
+    ]
+  });
+
+  assert.equal(options.x, 1656);
+  assert.equal(options.y, 730);
+});
+
+test("pet window keeps reachable positions on secondary displays", () => {
+  const workAreas = [
+    { x: 0, y: 0, width: 1920, height: 1040 },
+    { x: -1280, y: 0, width: 1280, height: 1024 }
+  ];
+  const secondary = createPetWindowOptions({
+    preloadPath: "preload.js",
+    savedBounds: { x: -1200, y: 100 },
+    workAreas
+  });
+  const partiallyVisible = createPetWindowOptions({
+    preloadPath: "preload.js",
+    savedBounds: { x: 1850, y: 100 },
+    workAreas
+  });
+
+  assert.equal(secondary.x, -1200);
+  assert.equal(secondary.y, 100);
+  assert.equal(partiallyVisible.x, 1850);
+  assert.equal(partiallyVisible.y, 100);
+});

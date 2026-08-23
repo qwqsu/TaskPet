@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -183,11 +183,18 @@ async function openCodexPetsFolder() {
 }
 
 function createPetWindow() {
+  const primaryDisplay = screen.getPrimaryDisplay();
+  const workAreas = [
+    primaryDisplay,
+    ...screen.getAllDisplays().filter((display) => display.id !== primaryDisplay.id)
+  ].map((display) => display.workArea);
+
   petWindow = new BrowserWindow(createPetWindowOptions({
     preloadPath: path.join(__dirname, "preload.js"),
     icon: createAppIcon(),
     savedBounds: settings.windowBounds,
-    zoom: settings.zoom
+    zoom: settings.zoom,
+    workAreas
   }));
 
   petWindow.setAlwaysOnTop(true, "floating");
