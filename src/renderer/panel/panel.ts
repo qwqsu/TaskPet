@@ -1,6 +1,7 @@
 type TaskType = "daily" | "one_time";
 type CompletionMode = "manual" | "duration" | "process_start" | "process_exit";
 type OccurrenceStatus = "pending" | "active" | "completed";
+type ProcessMatchMode = "exact_path" | "process_name";
 
 interface Task {
   id: string;
@@ -35,6 +36,31 @@ interface HistoryDay {
   entries: HistoryEntry[];
 }
 
+interface TaskProcessRule {
+  id: string;
+  taskId: string;
+  executableName: string | null;
+  executablePath: string | null;
+  matchMode: ProcessMatchMode;
+}
+
+interface RunningProgram {
+  executableName: string;
+  executablePath: string | null;
+  pidCount: number;
+}
+
+interface RuntimeTaskSnapshot {
+  taskId: string;
+  occurrenceId: string;
+  title: string;
+  occurrenceStatus: OccurrenceStatus;
+  completionMode: CompletionMode;
+  accumulatedSec: number;
+  targetDurationSec: number;
+  active: boolean;
+}
+
 type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: string; message: string } };
@@ -62,8 +88,30 @@ interface TaskBridge {
   onChanged(callback: () => void): () => void;
 }
 
+interface ProcessBridge {
+  listRules(): Promise<ApiResult<TaskProcessRule[]>>;
+  setRule(input: {
+    taskId: string;
+    matchMode: ProcessMatchMode;
+    executableName: string;
+    executablePath: string | null;
+  }): Promise<ApiResult<TaskProcessRule>>;
+  removeRules(taskId: string): Promise<ApiResult<boolean>>;
+  listRunning(): Promise<ApiResult<RunningProgram[]>>;
+  pickExecutable(): Promise<ApiResult<RunningProgram | null>>;
+}
+
+interface RuntimeBridge {
+  snapshot(): Promise<ApiResult<RuntimeTaskSnapshot[]>>;
+  onChanged(callback: (snapshots: RuntimeTaskSnapshot[]) => void): () => void;
+}
+
 interface TaskPetPanelWindow extends Window {
-  taskPet: { tasks: TaskBridge };
+  taskPet: {
+    tasks: TaskBridge;
+    processes: ProcessBridge;
+    runtime: RuntimeBridge;
+  };
 }
 
 function elementById<T extends HTMLElement>(id: string): T {
@@ -94,16 +142,22 @@ function formatDate(dateKey: string): string {
 }
 
 function formatDuration(seconds: number): string {
-  if (seconds <= 0) return "0 分钟";
-  const minutes = Math.floor(seconds / 60);
-  const remainingSeconds = seconds % 60;
-  if (minutes === 0) return `${remainingSeconds} 秒`;
-  if (remainingSeconds === 0) return `${minutes} 分钟`;
-  return `${minutes} 分 ${remainingSeconds} 秒`;
+  const safeSeconds = Math.max(0, Math.floor(seconds));
+  if (safeSeconds === 0) return "0 秒";
+  const hours = Math.floor(safeSeconds / 3_600);
+  const minutes = Math.floor((safeSeconds % 3_600) / 60);
+  const remainingSeconds = safeSeconds % 60;
+  const parts: string[] = [];
+  if (hours > 0) parts.push(`${hours} 小时`);
+  if (minutes > 0) parts.push(`${minutes} 分`);
+  if (remainingSeconds > 0 || parts.length === 0) parts.push(`${remainingSeconds} 秒`);
+  return parts.join(" ");
 }
 
 const panelWindow = window as unknown as TaskPetPanelWindow;
-const api = panelWindow.taskPet.tasks;
+const taskApi = panelWindow.taskPet.tasks;
+const processApi = panelWindow.taskPet.processes;
+const runtimeApi = panelWindow.taskPet.runtime;
 const pageTitle = elementById<HTMLHeadingElement>("pageTitle");
 const todaySummary = elementById<HTMLParagraphElement>("todaySummary");
 const statusMessage = elementById<HTMLParagraphElement>("statusMessage");
@@ -124,24 +178,39 @@ const completionMode = elementById<HTMLSelectElement>("completionMode");
 const durationField = elementById<HTMLElement>("durationField");
 const targetMinutes = elementById<HTMLInputElement>("targetMinutes");
 const archiveTaskButton = elementById<HTMLButtonElement>("archiveTaskButton");
+const programSummary = elementById<HTMLParagraphElement>("programSummary");
+const clearProgramButton = elementById<HTMLButtonElement>("clearProgramButton");
+const matchModeField = elementById<HTMLElement>("matchModeField");
+const processMatchMode = elementById<HTMLSelectElement>("processMatchMode");
+const matchModeHint = elementById<HTMLElement>("matchModeHint");
+const chooseRunningButton = elementById<HTMLButtonElement>("chooseRunningButton");
+const chooseExeButton = elementById<HTMLButtonElement>("chooseExeButton");
+const runningProgramPicker = elementById<HTMLElement>("runningProgramPicker");
+const runningProgramList = elementById<HTMLDivElement>("runningProgramList");
 
 let currentView: "today" | "history" = "today";
 let todayItems = new Map<string, TaskListItem>();
+let rulesByTask = new Map<string, TaskProcessRule[]>();
+let runtimeByOccurrence = new Map<string, RuntimeTaskSnapshot>();
+let selectedProgram: RunningProgram | null = null;
 
 function setStatus(message = ""): void {
   statusMessage.textContent = message;
 }
 
 function taskMeta(item: TaskListItem): string {
+  const runtime = runtimeByOccurrence.get(item.occurrence.id);
+  const accumulatedSec = runtime?.accumulatedSec ?? item.occurrence.accumulatedSec;
   const pieces = [item.task.taskType === "daily" ? "每日" : "一次性"];
+  if (runtime?.active) pieces.push("执行中");
   if (item.task.completionMode === "duration") {
     pieces.push(`目标 ${formatDuration(item.task.targetDurationSec)}`);
   } else {
     pieces.push("手动完成");
   }
-  if (item.occurrence.accumulatedSec > 0) {
-    pieces.push(`已累计 ${formatDuration(item.occurrence.accumulatedSec)}`);
-  }
+  if (accumulatedSec > 0) pieces.push(`已累计 ${formatDuration(accumulatedSec)}`);
+  const rule = rulesByTask.get(item.task.id)?.[0];
+  if (rule?.executableName) pieces.push(rule.executableName);
   return pieces.join(" · ");
 }
 
@@ -171,14 +240,20 @@ function renderToday(items: TaskListItem[]): void {
   const fragment = document.createDocumentFragment();
   for (const item of items) {
     const completed = item.occurrence.status === "completed";
+    const isActive = runtimeByOccurrence.get(item.occurrence.id)?.active === true;
     const card = document.createElement("article");
-    card.className = completed ? "task-card completed" : "task-card";
+    card.className = completed
+      ? "task-card completed"
+      : isActive ? "task-card active" : "task-card";
 
     const checkbox = document.createElement("input");
     checkbox.className = "task-check";
     checkbox.type = "checkbox";
     checkbox.checked = completed;
-    checkbox.setAttribute("aria-label", completed ? `重新打开 ${item.task.title}` : `完成 ${item.task.title}`);
+    checkbox.setAttribute(
+      "aria-label",
+      completed ? `重新打开 ${item.task.title}` : `完成 ${item.task.title}`
+    );
     checkbox.addEventListener("change", () => {
       checkbox.disabled = true;
       void changeCompletion(item, checkbox.checked);
@@ -211,7 +286,9 @@ function renderToday(items: TaskListItem[]): void {
 
 function renderHistory(days: HistoryDay[]): void {
   const total = days.reduce((count, day) => count + day.entries.length, 0);
-  todaySummary.textContent = total === 0 ? "最近 30 天没有完成记录" : `最近 30 天完成 ${total} 项`;
+  todaySummary.textContent = total === 0
+    ? "最近 30 天没有完成记录"
+    : `最近 30 天完成 ${total} 项`;
 
   if (days.length === 0) {
     historyList.replaceChildren(emptyState("历史还是空白", "完成的任务会按日期保留在这里。"));
@@ -238,16 +315,21 @@ function renderHistory(days: HistoryDay[]): void {
         ? new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit" })
           .format(new Date(entry.occurrence.completedAt))
         : "";
+      const completionLabel = entry.occurrence.completionSource === "manual"
+        ? "手动完成"
+        : entry.occurrence.completionSource === "duration"
+          ? "时长完成"
+          : "自动完成";
       const details = [
         entry.task.taskType === "daily" ? "每日" : "一次性",
-        entry.occurrence.completionSource === "manual" ? "手动完成" : "自动完成",
+        completionLabel,
         time
       ];
       if (entry.occurrence.accumulatedSec > 0) {
         details.push(`累计 ${formatDuration(entry.occurrence.accumulatedSec)}`);
       }
       if (entry.task.archivedAt) details.push("已归档");
-      meta.textContent = details.join(" · ");
+      meta.textContent = details.filter(Boolean).join(" · ");
       card.append(title, meta);
       section.append(card);
     }
@@ -256,16 +338,35 @@ function renderHistory(days: HistoryDay[]): void {
   historyList.replaceChildren(fragment);
 }
 
+function groupRules(rules: TaskProcessRule[]): Map<string, TaskProcessRule[]> {
+  const grouped = new Map<string, TaskProcessRule[]>();
+  for (const rule of rules) {
+    const current = grouped.get(rule.taskId) ?? [];
+    current.push(rule);
+    grouped.set(rule.taskId, current);
+  }
+  return grouped;
+}
+
 async function refreshToday(): Promise<void> {
   setStatus();
-  renderToday(unwrap(await api.listToday()));
+  const [itemsResult, rulesResult, runtimeResult] = await Promise.all([
+    taskApi.listToday(),
+    processApi.listRules(),
+    runtimeApi.snapshot()
+  ]);
+  rulesByTask = groupRules(unwrap(rulesResult));
+  runtimeByOccurrence = new Map(
+    unwrap(runtimeResult).map((snapshot) => [snapshot.occurrenceId, snapshot])
+  );
+  renderToday(unwrap(itemsResult));
 }
 
 async function refreshHistory(): Promise<void> {
   setStatus();
   const to = new Date();
   const from = new Date(to.getFullYear(), to.getMonth(), to.getDate() - 29);
-  renderHistory(unwrap(await api.history({
+  renderHistory(unwrap(await taskApi.history({
     fromDate: toDateKey(from),
     toDate: toDateKey(to)
   })));
@@ -274,11 +375,8 @@ async function refreshHistory(): Promise<void> {
 async function changeCompletion(item: TaskListItem, complete: boolean): Promise<void> {
   try {
     setStatus();
-    if (complete) {
-      unwrap(await api.complete(item.occurrence.id));
-    } else {
-      unwrap(await api.reopen(item.occurrence.id));
-    }
+    if (complete) unwrap(await taskApi.complete(item.occurrence.id));
+    else unwrap(await taskApi.reopen(item.occurrence.id));
     await refreshToday();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "无法修改任务状态");
@@ -292,9 +390,83 @@ function syncDurationField(): void {
   targetMinutes.required = isDuration;
 }
 
+function syncProgramBinding(): void {
+  const hasProgram = selectedProgram !== null;
+  clearProgramButton.classList.toggle("hidden", !hasProgram);
+  matchModeField.classList.toggle("hidden", !hasProgram);
+  if (!selectedProgram) {
+    programSummary.textContent = "尚未绑定程序";
+    return;
+  }
+
+  const exactOption = processMatchMode.querySelector<HTMLOptionElement>(
+    'option[value="exact_path"]'
+  );
+  if (exactOption) exactOption.disabled = !selectedProgram.executablePath;
+  if (!selectedProgram.executablePath) processMatchMode.value = "process_name";
+  matchModeHint.textContent = selectedProgram.executablePath
+    ? "精确路径可避免同名程序误匹配。"
+    : "系统无法读取该路径，只能按进程名匹配。";
+  programSummary.textContent = selectedProgram.executablePath
+    ? `${selectedProgram.executableName} · ${selectedProgram.executablePath}`
+    : `${selectedProgram.executableName} · 仅进程名`;
+}
+
+function selectProgram(program: RunningProgram): void {
+  selectedProgram = program;
+  processMatchMode.value = program.executablePath ? "exact_path" : "process_name";
+  runningProgramPicker.classList.add("hidden");
+  syncProgramBinding();
+}
+
+function renderRunningPrograms(programs: RunningProgram[]): void {
+  if (programs.length === 0) {
+    runningProgramList.replaceChildren(
+      emptyState("没有可选择的程序", "请先启动目标程序，或改用 exe 文件选择。")
+    );
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  for (const program of programs) {
+    const option = document.createElement("button");
+    option.type = "button";
+    option.className = "program-option";
+    const name = document.createElement("strong");
+    name.textContent = `${program.executableName} · ${program.pidCount} 个进程`;
+    const detail = document.createElement("span");
+    detail.textContent = program.executablePath ?? "路径不可读取，仅可按进程名匹配";
+    option.append(name, detail);
+    option.addEventListener("click", () => selectProgram(program));
+    fragment.append(option);
+  }
+  runningProgramList.replaceChildren(fragment);
+}
+
+async function chooseRunningProgram(): Promise<void> {
+  try {
+    runningProgramPicker.classList.remove("hidden");
+    runningProgramList.replaceChildren(emptyState("正在读取", "只读取当前快照，不保存无关进程。"));
+    renderRunningPrograms(unwrap(await processApi.listRunning()));
+  } catch (error) {
+    runningProgramPicker.classList.add("hidden");
+    setStatus(error instanceof Error ? error.message : "无法读取当前程序");
+  }
+}
+
+async function chooseExecutable(): Promise<void> {
+  try {
+    const program = unwrap(await processApi.pickExecutable());
+    if (program) selectProgram(program);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "无法选择 exe 文件");
+  }
+}
+
 function openTaskDialog(item?: TaskListItem): void {
   taskForm.reset();
   setStatus();
+  runningProgramPicker.classList.add("hidden");
   const isEdit = Boolean(item);
   dialogTitle.textContent = isEdit ? "编辑任务" : "添加任务";
   editingTaskId.value = item?.task.id ?? "";
@@ -308,18 +480,46 @@ function openTaskDialog(item?: TaskListItem): void {
     ? String(Math.max(1, Math.ceil(item.task.targetDurationSec / 60)))
     : "25";
   archiveTaskButton.classList.toggle("hidden", !isEdit);
+
+  const rule = item ? rulesByTask.get(item.task.id)?.[0] : undefined;
+  selectedProgram = rule?.executableName
+    ? {
+      executableName: rule.executableName,
+      executablePath: rule.executablePath,
+      pidCount: 0
+    }
+    : null;
+  processMatchMode.value = rule?.matchMode ?? "exact_path";
   syncDurationField();
+  syncProgramBinding();
   taskDialog.showModal();
   requestAnimationFrame(() => taskTitle.focus());
 }
 
 function closeTaskDialog(): void {
+  runningProgramPicker.classList.add("hidden");
   if (taskDialog.open) taskDialog.close();
+}
+
+async function saveProgramBinding(taskId: string): Promise<void> {
+  const previousRule = rulesByTask.get(taskId)?.[0];
+  if (!selectedProgram) {
+    if (previousRule) unwrap(await processApi.removeRules(taskId));
+    return;
+  }
+  unwrap(await processApi.setRule({
+    taskId,
+    matchMode: processMatchMode.value === "process_name" ? "process_name" : "exact_path",
+    executableName: selectedProgram.executableName,
+    executablePath: selectedProgram.executablePath
+  }));
 }
 
 async function saveTask(event: SubmitEvent): Promise<void> {
   event.preventDefault();
-  const mode: "manual" | "duration" = completionMode.value === "manual" ? "manual" : "duration";
+  const mode: "manual" | "duration" = completionMode.value === "manual"
+    ? "manual"
+    : "duration";
   const minutes = mode === "duration" ? Number(targetMinutes.value) : 0;
   if (mode === "duration" && (!Number.isInteger(minutes) || minutes <= 0)) {
     setStatus("目标分钟数必须是大于 0 的整数");
@@ -335,14 +535,17 @@ async function saveTask(event: SubmitEvent): Promise<void> {
 
   try {
     setStatus();
-    if (editingTaskId.value) {
-      unwrap(await api.update(editingTaskId.value, payload));
+    let taskId = editingTaskId.value;
+    if (taskId) {
+      unwrap(await taskApi.update(taskId, payload));
     } else {
-      unwrap(await api.create({
+      const task = unwrap(await taskApi.create({
         ...payload,
         taskType: taskType.value === "one_time" ? "one_time" : "daily"
       }));
+      taskId = task.id;
     }
+    await saveProgramBinding(taskId);
     closeTaskDialog();
     await refreshToday();
   } catch (error) {
@@ -357,7 +560,7 @@ async function archiveEditingTask(): Promise<void> {
   if (!window.confirm(`归档“${item.task.title}”？历史完成记录会继续保留。`)) return;
 
   try {
-    unwrap(await api.archive(id));
+    unwrap(await taskApi.archive(id));
     closeTaskDialog();
     await refreshToday();
   } catch (error) {
@@ -390,21 +593,42 @@ taskForm.addEventListener("submit", (event) => void saveTask(event));
 elementById<HTMLButtonElement>("cancelTaskButton").addEventListener("click", closeTaskDialog);
 elementById<HTMLButtonElement>("dismissTaskButton").addEventListener("click", closeTaskDialog);
 archiveTaskButton.addEventListener("click", () => void archiveEditingTask());
+chooseRunningButton.addEventListener("click", () => void chooseRunningProgram());
+chooseExeButton.addEventListener("click", () => void chooseExecutable());
+clearProgramButton.addEventListener("click", () => {
+  selectedProgram = null;
+  syncProgramBinding();
+});
+elementById<HTMLButtonElement>("closeRunningPickerButton").addEventListener("click", () => {
+  runningProgramPicker.classList.add("hidden");
+});
 for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
   tab.addEventListener("click", () => {
     void switchView(tab.dataset.view === "history" ? "history" : "today");
   });
 }
 
-api.onChanged(() => {
+const unsubscribeStored = taskApi.onChanged(() => {
   void (currentView === "today" ? refreshToday() : refreshHistory()).catch((error: unknown) => {
     setStatus(error instanceof Error ? error.message : "无法刷新任务");
   });
 });
 
+const unsubscribeRuntime = runtimeApi.onChanged((snapshots) => {
+  runtimeByOccurrence = new Map(
+    snapshots.map((snapshot) => [snapshot.occurrenceId, snapshot])
+  );
+  if (currentView === "today") renderToday([...todayItems.values()]);
+});
+
+window.addEventListener("beforeunload", () => {
+  unsubscribeStored();
+  unsubscribeRuntime();
+});
+
 void refreshToday().then(() => {
-  api.rendererReady(true);
+  taskApi.rendererReady(true);
 }).catch((error: unknown) => {
   setStatus(error instanceof Error ? error.message : "任务面板初始化失败");
-  api.rendererReady(false);
+  taskApi.rendererReady(false);
 });

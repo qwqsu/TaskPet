@@ -3,6 +3,7 @@ const stage = document.querySelector(".stage");
 const sprite = document.getElementById("sprite");
 const fallback = document.getElementById("fallback");
 const resizeHandle = document.getElementById("resizeHandle");
+const petStatus = document.getElementById("petStatus");
 
 const DEFAULT_FRAME = Object.freeze({ width: 192, height: 208, columns: 8, rows: 9 });
 const BASE_SPRITE_SCALE = 0.86;
@@ -38,6 +39,7 @@ let minZoom = 0.65;
 let maxZoom = 2.4;
 let resizeStart = null;
 let hideResizeTimer = null;
+let animationStarted = false;
 
 function normalizeState(state) {
   return ALLOWED_STATES.has(state) ? state : "idle";
@@ -124,6 +126,7 @@ function scheduleNextFrame() {
 
 function setAnimationState(state) {
   currentState = normalizeState(state);
+  animationStarted = true;
   frameIndex = 0;
   pet.dataset.state = currentState;
   if (currentState !== "idle" && !resizeStart) {
@@ -154,7 +157,11 @@ function setPetState(payload) {
   if (payload?.activePet && payload.activePet.key !== currentPet?.key) {
     setPet(payload.activePet);
   }
-  setAnimationState(payload?.state);
+  const message = typeof payload?.message === "string" ? payload.message.slice(0, 120) : "";
+  petStatus.textContent = message;
+  petStatus.classList.toggle("show", message.length > 0);
+  const nextState = normalizeState(payload?.state);
+  if (!animationStarted || nextState !== currentState) setAnimationState(nextState);
 }
 
 async function startDrag(event) {

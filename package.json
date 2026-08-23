@@ -1,7 +1,7 @@
 {
   "name": "taskpet",
-  "version": "0.2.0-p1",
-  "description": "Local-first desktop task assistant shell with a persistent animated pet.",
+  "version": "0.3.0-p2",
+  "description": "Local-first desktop task assistant with process-bound runtime tracking.",
   "main": "src/main.js",
   "scripts": {
     "compile": "tsc -p tsconfig.json",
@@ -26,6 +26,7 @@
   "license": "MIT",
   "dependencies": {
     "better-sqlite3": "9.4.3",
+    "koffi": "3.1.6",
     "zod": "3.23.8"
   },
   "devDependencies": {

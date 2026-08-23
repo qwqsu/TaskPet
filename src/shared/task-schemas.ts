@@ -5,6 +5,17 @@ const titleSchema = z.string().trim().min(1, "任务标题不能为空").max(120
 const descriptionSchema = z.string().trim().max(2000, "任务描述不能超过 2000 个字符").nullable();
 const p1CompletionModeSchema = z.enum(["manual", "duration"]);
 const dateKeySchema = z.string().refine(isLocalDateKey, "日期必须是有效的 YYYY-MM-DD");
+const executableNameSchema = z.string()
+  .trim()
+  .min(1, "进程名不能为空")
+  .max(260, "进程名不能超过 260 个字符")
+  .refine((value) => !/[\\/\0]/.test(value), "进程名不能包含路径分隔符");
+const executablePathSchema = z.string()
+  .trim()
+  .min(1, "程序路径不能为空")
+  .max(32_767, "程序路径过长")
+  .refine((value) => /^(?:[a-zA-Z]:[\\/]|\\\\)/.test(value), "必须提供绝对 Windows 程序路径")
+  .refine((value) => /\.exe$/i.test(value), "只能绑定 Windows exe 文件");
 
 function validateDuration(
   value: { completionMode: "manual" | "duration"; targetDurationSec: number },
@@ -71,9 +82,25 @@ export const PanelReadyInputSchema = z.object({
   ok: z.boolean()
 }).strict();
 
+export const SetProcessRuleInputSchema = z.object({
+  taskId: z.string().uuid(),
+  matchMode: z.enum(["exact_path", "process_name"]),
+  executableName: executableNameSchema,
+  executablePath: executablePathSchema.nullable().default(null)
+}).strict().superRefine((value, context) => {
+  if (value.matchMode === "exact_path" && !value.executablePath) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["executablePath"],
+      message: "精确路径匹配必须提供 exe 路径"
+    });
+  }
+});
+
 export type CreateTaskInput = z.input<typeof CreateTaskInputSchema>;
 export type UpdateTaskPatch = z.input<typeof UpdateTaskPatchSchema>;
 export type UpdateTaskInput = z.input<typeof UpdateTaskInputSchema>;
 export type TaskIdInput = z.input<typeof TaskIdInputSchema>;
 export type OccurrenceIdInput = z.input<typeof OccurrenceIdInputSchema>;
 export type HistoryQuery = z.input<typeof HistoryQuerySchema>;
+export type SetProcessRuleInput = z.input<typeof SetProcessRuleInputSchema>;

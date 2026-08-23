@@ -18,7 +18,12 @@ test("task panel keeps SQLite behind an isolated preload", () => {
   const preload = fs.readFileSync(path.join(root, "src", "preload", "panel-preload.ts"), "utf8");
   assert.match(html, /今日任务/);
   assert.match(html, /历史/);
+  assert.match(html, /选择正在运行/);
+  assert.match(html, /选择 exe 文件/);
   assert.doesNotMatch(renderer, /better-sqlite3|node:fs|child_process/);
   assert.doesNotMatch(preload, /better-sqlite3|node:fs|child_process/);
   assert.match(preload, /contextBridge\.exposeInMainWorld/);
+  assert.match(preload, /taskpet:processes:list-running/);
+  assert.match(preload, /taskpet:runtime:changed/);
+  assert.doesNotMatch(renderer, /setInterval\s*\(/);
 });

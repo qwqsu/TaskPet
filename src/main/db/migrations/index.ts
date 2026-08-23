@@ -1,7 +1,8 @@
 import type Database from "better-sqlite3";
 import { initialMigration, type Migration } from "./001-init";
+import { processRuntimeMigration } from "./002-process-runtime";
 
-const migrations: readonly Migration[] = [initialMigration];
+const migrations: readonly Migration[] = [initialMigration, processRuntimeMigration];
 
 interface SchemaVersionRow {
   version: number;

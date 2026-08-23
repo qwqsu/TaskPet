@@ -8,7 +8,7 @@ import { migrateDatabase, latestSchemaVersion } from "../src/main/db/migrations"
 import { SettingsRepository } from "../src/main/db/task-repository";
 import { createTaskHarness } from "./task-test-helpers";
 
-test("initial migration establishes the P1 schema exactly once", () => {
+test("migrations establish the task and process runtime schema exactly once", () => {
   const harness = createTaskHarness();
   try {
     const tables = harness.database.prepare(`
@@ -18,21 +18,23 @@ test("initial migration establishes the P1 schema exactly once", () => {
     `).all() as Array<{ name: string }>;
 
     assert.deepEqual(tables.map((row) => row.name), [
+      "process_sessions",
       "schema_version",
       "settings",
       "task_occurrences",
+      "task_process_rules",
       "tasks"
     ]);
-    assert.equal(latestSchemaVersion(), 1);
+    assert.equal(latestSchemaVersion(), 2);
     assert.equal(
       (harness.database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
-      1
+      2
     );
 
     migrateDatabase(harness.database, "2026-08-24T00:00:00.000Z");
     assert.equal(
       (harness.database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
-      1
+      2
     );
     assert.equal(harness.database.pragma("foreign_keys", { simple: true }), 1);
   } finally {
@@ -67,7 +69,7 @@ test("a migrated on-disk database can be reopened with its data intact", () => {
     assert.equal(new SettingsRepository(database).get("test.persistence"), "kept");
     assert.equal(
       (database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
-      1
+      2
     );
   } finally {
     if (database.open) database.close();

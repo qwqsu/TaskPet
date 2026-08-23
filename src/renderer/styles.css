@@ -31,6 +31,36 @@ body {
   -webkit-app-region: no-drag;
 }
 
+.pet-status {
+  position: absolute;
+  top: 18px;
+  left: 50%;
+  z-index: 5;
+  max-width: calc(100% - 24px);
+  margin: 0;
+  padding: 7px 11px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+  color: #263241;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.13);
+  backdrop-filter: blur(8px);
+  opacity: 0;
+  transform: translate(-50%, 4px);
+  transition: opacity 150ms ease, transform 150ms ease;
+  pointer-events: none;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.pet-status.show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+
 .pet {
   position: absolute;
   left: var(--pet-left);

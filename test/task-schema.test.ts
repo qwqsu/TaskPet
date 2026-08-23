@@ -4,6 +4,7 @@ import {
   CreateTaskInputSchema,
   HistoryQuerySchema,
   OccurrenceIdInputSchema,
+  SetProcessRuleInputSchema,
   UpdateTaskInputSchema
 } from "../src/shared/task-schemas";
 
@@ -32,4 +33,24 @@ test("task IPC schemas reject malformed and over-broad input", () => {
     fromDate: "2026-08-31",
     toDate: "2026-08-01"
   }).success, false);
+
+  assert.equal(SetProcessRuleInputSchema.safeParse({
+    taskId: "00000000-0000-4000-8000-000000000001",
+    matchMode: "exact_path",
+    executableName: "Codex.exe",
+    executablePath: null
+  }).success, false);
+  assert.equal(SetProcessRuleInputSchema.safeParse({
+    taskId: "00000000-0000-4000-8000-000000000001",
+    matchMode: "exact_path",
+    executableName: "Codex.exe",
+    executablePath: "C:\\Apps\\Codex\\Codex.exe",
+    command: "--unsafe"
+  }).success, false);
+  assert.equal(SetProcessRuleInputSchema.safeParse({
+    taskId: "00000000-0000-4000-8000-000000000001",
+    matchMode: "process_name",
+    executableName: "Codex.exe",
+    executablePath: null
+  }).success, true);
 });

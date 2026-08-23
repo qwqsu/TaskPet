@@ -82,8 +82,40 @@
         <label id="durationField" class="field">
           <span>目标分钟数</span>
           <input id="targetMinutes" name="targetMinutes" type="number" min="1" max="100000" value="25" />
-          <small>本阶段可手动勾选；自动计时将在后续接入。</small>
+          <small>绑定程序运行期间累计；关闭后暂停，下次启动继续。</small>
         </label>
+
+        <section class="program-binding" aria-labelledby="programBindingTitle">
+          <div class="binding-heading">
+            <div>
+              <span id="programBindingTitle">绑定程序 <small>可选</small></span>
+              <p id="programSummary" class="program-summary">尚未绑定程序</p>
+            </div>
+            <button id="clearProgramButton" class="text-button hidden" type="button">清除</button>
+          </div>
+
+          <label id="matchModeField" class="field compact-field hidden">
+            <span>匹配方式</span>
+            <select id="processMatchMode" name="processMatchMode">
+              <option value="exact_path">精确 exe 路径（推荐）</option>
+              <option value="process_name">仅按进程名</option>
+            </select>
+            <small id="matchModeHint">精确路径可避免同名程序误匹配。</small>
+          </label>
+
+          <div class="binding-actions">
+            <button id="chooseRunningButton" class="secondary-button" type="button">选择正在运行</button>
+            <button id="chooseExeButton" class="secondary-button" type="button">选择 exe 文件</button>
+          </div>
+
+          <div id="runningProgramPicker" class="running-program-picker hidden" aria-live="polite">
+            <div class="picker-heading">
+              <strong>当前程序</strong>
+              <button id="closeRunningPickerButton" class="text-button" type="button">收起</button>
+            </div>
+            <div id="runningProgramList" class="running-program-list"></div>
+          </div>
+        </section>
 
         <div class="dialog-actions">
           <button id="archiveTaskButton" class="danger-button hidden" type="button">归档</button>

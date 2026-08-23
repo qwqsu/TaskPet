@@ -8,7 +8,7 @@ import {
   TaskIdInputSchema,
   UpdateTaskInputSchema
 } from "../../shared/task-schemas";
-import type { TaskApiResult } from "../../shared/task-types";
+import type { TaskApiResult, TaskListItem } from "../../shared/task-types";
 import { TaskService, TaskServiceError } from "../services/task-service";
 import { TASK_CHANNELS } from "./task-channels";
 
@@ -17,7 +17,11 @@ export interface RegisterTaskIpcOptions {
   service: TaskService;
   isTrustedSender: (event: IpcMainInvokeEvent) => boolean;
   onChanged: () => void;
-  onCompleted: (title: string) => void;
+  beforeTaskUpdate: (taskId: string) => void;
+  beforeTaskArchive: (taskId: string) => void;
+  beforeOccurrenceComplete: (occurrenceId: string) => void;
+  onCompleted: (item: TaskListItem) => void;
+  onReopened: (item: TaskListItem) => void;
 }
 
 function success<T>(data: T): TaskApiResult<T> {
@@ -85,29 +89,35 @@ export function registerTaskIpc(options: RegisterTaskIpcOptions): () => void {
   });
 
   handle(TASK_CHANNELS.update, UpdateTaskInputSchema, ({ id, patch }) => {
+    options.beforeTaskUpdate(id);
     const task = options.service.updateTask(id, patch);
     options.onChanged();
     return task;
   });
 
   handle(TASK_CHANNELS.archive, TaskIdInputSchema, ({ id }) => {
+    options.beforeTaskArchive(id);
     const task = options.service.archiveTask(id);
     options.onChanged();
     return task;
   });
 
   handle(TASK_CHANNELS.complete, OccurrenceIdInputSchema, ({ occurrenceId }) => {
+    options.beforeOccurrenceComplete(occurrenceId);
     const result = options.service.completeOccurrence(occurrenceId);
     if (result.changed) {
       options.onChanged();
-      options.onCompleted(result.item.task.title);
+      options.onCompleted(result.item);
     }
     return result;
   });
 
   handle(TASK_CHANNELS.reopen, OccurrenceIdInputSchema, ({ occurrenceId }) => {
     const result = options.service.reopenOccurrence(occurrenceId);
-    if (result.changed) options.onChanged();
+    if (result.changed) {
+      options.onChanged();
+      options.onReopened(result.item);
+    }
     return result;
   });
 

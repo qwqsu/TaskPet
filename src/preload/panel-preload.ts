@@ -11,6 +11,12 @@ import type {
   TaskApiResult,
   TaskListItem
 } from "../shared/task-types";
+import type {
+  RunningProgram,
+  RuntimeTaskSnapshot,
+  TaskProcessRule
+} from "../shared/process-types";
+import type { SetProcessRuleInput } from "../shared/task-schemas";
 
 // Sandboxed preloads can load Electron but cannot require arbitrary local modules.
 // Keep this closed channel list in sync with main/ipc/task-channels.ts.
@@ -26,11 +32,32 @@ const TASK_CHANNELS = Object.freeze({
   rendererReady: "taskpet:tasks:renderer-ready"
 });
 
+const PROCESS_CHANNELS = Object.freeze({
+  listRules: "taskpet:process-rules:list",
+  setRule: "taskpet:process-rules:set",
+  removeRules: "taskpet:process-rules:remove",
+  listRunning: "taskpet:processes:list-running",
+  pickExecutable: "taskpet:processes:pick-executable",
+  runtimeSnapshot: "taskpet:runtime:snapshot",
+  runtimeChanged: "taskpet:runtime:changed"
+});
+
 function subscribe(callback: () => void): () => void {
   if (typeof callback !== "function") return () => {};
   const listener = (): void => callback();
   ipcRenderer.on(TASK_CHANNELS.changed, listener);
   return () => ipcRenderer.removeListener(TASK_CHANNELS.changed, listener);
+}
+
+function subscribeRuntime(
+  callback: (snapshots: RuntimeTaskSnapshot[]) => void
+): () => void {
+  if (typeof callback !== "function") return () => {};
+  const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
+    if (Array.isArray(payload)) callback(payload as RuntimeTaskSnapshot[]);
+  };
+  ipcRenderer.on(PROCESS_CHANNELS.runtimeChanged, listener);
+  return () => ipcRenderer.removeListener(PROCESS_CHANNELS.runtimeChanged, listener);
 }
 
 const taskApi = Object.freeze({
@@ -61,4 +88,33 @@ const taskApi = Object.freeze({
   onChanged: subscribe
 });
 
-contextBridge.exposeInMainWorld("taskPet", Object.freeze({ tasks: taskApi }));
+const processApi = Object.freeze({
+  listRules: (): Promise<TaskApiResult<TaskProcessRule[]>> => (
+    ipcRenderer.invoke(PROCESS_CHANNELS.listRules)
+  ),
+  setRule: (input: SetProcessRuleInput): Promise<TaskApiResult<TaskProcessRule>> => (
+    ipcRenderer.invoke(PROCESS_CHANNELS.setRule, input)
+  ),
+  removeRules: (taskId: string): Promise<TaskApiResult<boolean>> => (
+    ipcRenderer.invoke(PROCESS_CHANNELS.removeRules, { id: taskId })
+  ),
+  listRunning: (): Promise<TaskApiResult<RunningProgram[]>> => (
+    ipcRenderer.invoke(PROCESS_CHANNELS.listRunning)
+  ),
+  pickExecutable: (): Promise<TaskApiResult<RunningProgram | null>> => (
+    ipcRenderer.invoke(PROCESS_CHANNELS.pickExecutable)
+  )
+});
+
+const runtimeApi = Object.freeze({
+  snapshot: (): Promise<TaskApiResult<RuntimeTaskSnapshot[]>> => (
+    ipcRenderer.invoke(PROCESS_CHANNELS.runtimeSnapshot)
+  ),
+  onChanged: subscribeRuntime
+});
+
+contextBridge.exposeInMainWorld("taskPet", Object.freeze({
+  tasks: taskApi,
+  processes: processApi,
+  runtime: runtimeApi
+}));

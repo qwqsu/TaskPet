@@ -310,6 +310,132 @@ h2 {
   font-weight: 400;
 }
 
+.program-binding {
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px solid rgba(48, 51, 42, 0.14);
+  border-radius: 14px;
+  background: rgba(239, 242, 234, 0.58);
+}
+
+.binding-heading,
+.picker-heading,
+.binding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.binding-heading > div {
+  min-width: 0;
+}
+
+.binding-heading span {
+  color: #555a50;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.binding-heading small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.program-summary {
+  overflow: hidden;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-button {
+  padding: 4px 2px;
+  border: 0;
+  color: var(--accent-strong);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compact-field {
+  margin: 13px 0 0;
+}
+
+.binding-actions {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.binding-actions .secondary-button {
+  flex: 1;
+  min-width: 0;
+  padding-right: 8px;
+  padding-left: 8px;
+  font-size: 12px;
+}
+
+.running-program-picker {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.picker-heading strong {
+  font-size: 12px;
+}
+
+.running-program-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.program-option {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  text-align: left;
+  background: #fff;
+  cursor: pointer;
+}
+
+.program-option:hover {
+  border-color: var(--accent);
+  background: #f7faf4;
+}
+
+.program-option strong,
+.program-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.program-option strong {
+  font-size: 12px;
+}
+
+.program-option span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.task-card.active {
+  border-color: rgba(67, 91, 57, 0.4);
+  box-shadow: 0 8px 24px rgba(67, 91, 57, 0.12);
+}
+
 .field input,
 .field textarea,
 .field select {

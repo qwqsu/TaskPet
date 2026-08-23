@@ -31,7 +31,6 @@ let pets = [];
 let activePet = null;
 let settings = {};
 let smokeTimeout = null;
-let doneStateTimeout = null;
 let taskSystem = null;
 const smokeReady = { pet: false, panel: false };
 
@@ -53,15 +52,6 @@ function markSmokeReady(component, ready = true) {
   smokeTimeout = null;
   console.log("TaskPet smoke test ready (pet + task panel + SQLite)");
   setTimeout(() => app.quit(), 100);
-}
-
-function celebrateTaskCompletion(title) {
-  clearTimeout(doneStateTimeout);
-  petState.setState("done", { message: `已完成：${title}` });
-  doneStateTimeout = setTimeout(() => {
-    doneStateTimeout = null;
-    petState.setState("idle");
-  }, 2500);
 }
 
 function petWindowBounds() {
@@ -368,7 +358,7 @@ app.whenReady().then(() => {
     panelPreloadPath: path.join(__dirname, "..", "build", "preload", "panel-preload.js"),
     panelHtmlPath: path.join(__dirname, "renderer", "panel", "index.html"),
     icon: createAppIcon(),
-    onCompleted: (title) => celebrateTaskCompletion(title),
+    onPetState: (state, message) => petState.setState(state, { message }),
     onPanelReady: (ready) => markSmokeReady("panel", ready)
   });
   taskSystem.initialize();
@@ -395,7 +385,6 @@ app.on("window-all-closed", () => {
 
 app.on("before-quit", () => {
   clearTimeout(smokeTimeout);
-  clearTimeout(doneStateTimeout);
   saveWindowBounds();
   taskSystem?.close();
   taskSystem = null;

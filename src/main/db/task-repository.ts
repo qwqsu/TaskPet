@@ -273,6 +273,88 @@ export class TaskRepository {
     return row ? toTaskListItem(row) : null;
   }
 
+  findRuntimeCandidate(taskId: string, date: string): TaskListItem | null {
+    const row = this.database.prepare(`${JOINED_TASK_SELECT}
+      WHERE t.id = ?
+        AND t.enabled = 1
+        AND t.archived_at IS NULL
+        AND o.status <> 'completed'
+        AND (
+          (t.task_type = 'daily' AND o.occurrence_date = ?)
+          OR t.task_type = 'one_time'
+        )
+      ORDER BY o.created_at
+      LIMIT 1
+    `).get(taskId, date) as JoinedRow | undefined;
+    return row ? toTaskListItem(row) : null;
+  }
+
+  markOccurrenceActive(occurrenceId: string, updatedAt: string): boolean {
+    return this.database.prepare(`
+      UPDATE task_occurrences
+      SET status = 'active', updated_at = ?
+      WHERE id = ? AND status <> 'completed'
+    `).run(updatedAt, occurrenceId).changes === 1;
+  }
+
+  checkpointOccurrence(
+    occurrenceId: string,
+    accumulatedSec: number,
+    updatedAt: string
+  ): boolean {
+    return this.database.prepare(`
+      UPDATE task_occurrences
+      SET accumulated_sec = MAX(accumulated_sec, ?), updated_at = ?
+      WHERE id = ? AND status = 'active'
+    `).run(accumulatedSec, updatedAt, occurrenceId).changes === 1;
+  }
+
+  pauseOccurrence(
+    occurrenceId: string,
+    accumulatedSec: number,
+    updatedAt: string
+  ): boolean {
+    return this.database.prepare(`
+      UPDATE task_occurrences
+      SET status = 'pending',
+          accumulated_sec = MAX(accumulated_sec, ?),
+          updated_at = ?
+      WHERE id = ? AND status = 'active'
+    `).run(accumulatedSec, updatedAt, occurrenceId).changes === 1;
+  }
+
+  completeDurationOccurrence(
+    occurrenceId: string,
+    accumulatedSec: number,
+    completedAt: string
+  ): boolean {
+    return this.database.prepare(`
+      UPDATE task_occurrences
+      SET status = 'completed',
+          accumulated_sec = MAX(accumulated_sec, ?),
+          completed_at = ?,
+          completion_source = 'duration',
+          updated_at = ?
+      WHERE id = ? AND status <> 'completed'
+    `).run(accumulatedSec, completedAt, completedAt, occurrenceId).changes === 1;
+  }
+
+  resetActiveOccurrence(
+    occurrenceId: string,
+    accumulatedSec: number,
+    updatedAt: string
+  ): boolean {
+    return this.pauseOccurrence(occurrenceId, accumulatedSec, updatedAt);
+  }
+
+  resetAllActiveOccurrences(updatedAt: string): number {
+    return this.database.prepare(`
+      UPDATE task_occurrences
+      SET status = 'pending', updated_at = ?
+      WHERE status = 'active'
+    `).run(updatedAt).changes;
+  }
+
   completeOccurrence(occurrenceId: string, completedAt: string): boolean {
     const result = this.database.prepare(`
       UPDATE task_occurrences

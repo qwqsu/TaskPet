@@ -2,7 +2,7 @@
 
 TaskPet is a local-first desktop task assistant that uses a small animated pet as its persistent entry point.
 
-This branch implements P1: a local SQLite task system and task panel on top of the P0 pet shell. It still excludes process monitoring, automatic runtime tracking, reminders, Agent hooks, a local HTTP API, and automatic updates.
+This branch implements the Windows process-monitoring and duration-runtime stages on top of the P1 task system. It still excludes foreground-window tracking, general process history, reminders, Agent hooks, a local HTTP API, and automatic updates.
 
 ## Current capabilities
 
@@ -19,6 +19,11 @@ This branch implements P1: a local SQLite task system and task panel on top of t
 - Lazy daily occurrences and one permanent occurrence per one-time task
 - Manual complete/reopen and a simple 30-day history
 - Main-process SQLite migrations, TaskService, and Zod-validated IPC
+- Bind a task by exact Windows exe path or process name
+- Choose from a one-time snapshot of running programs or a Windows `.exe` file picker
+- Low-frequency native process scans with multi-PID wall-clock deduplication and exit debounce
+- Persistent process sessions, 30-second checkpoints, crash recovery, and local-midnight daily splitting
+- Duration completion with in-memory one-second UI updates and `working` / `done` pet feedback
 
 ## Development
 
@@ -64,15 +69,16 @@ TaskPet uses rows 0, 1, 2, 3, 4, and 7 for its six states. Missing frame metadat
 ```text
 Electron main
 ├── pet window, tray, pet library, and PetStateController
-├── SQLite migrations / TaskRepository
-└── TaskService + Zod IPC
-       ├── pet preload → spritesheet renderer
-       └── panel preload → Today / History renderer
+├── SQLite migrations / task, process-rule, and session repositories
+├── TaskService + Zod IPC
+├── WindowsProcessProvider → ProcessMatcher → ProcessMonitor
+├── RuntimeTracker → TaskEventBus → PetStateMachine
+└── isolated preloads
+    ├── pet preload → spritesheet renderer
+    └── panel preload → Today / History renderer
 ```
 
-System capabilities stay in the main process. Separate preloads expose the minimum API needed by each renderer; neither renderer can access the filesystem, child processes, or SQLite. Task data is stored under Electron's `userData/taskpet.sqlite3`.
-
-P2 can add an independent main-process `ProcessMonitor` and pass its events to the existing `TaskService`; renderers, SQLite, and the pet state machine do not need direct process-list access.
+System capabilities stay in the main process. Separate preloads expose fixed, validated APIs; neither renderer can access the filesystem, child processes, native process APIs, or SQLite. Full process snapshots remain in memory and are discarded after matching. Task rules and matching sessions are stored under Electron's `userData/taskpet.sqlite3`.
 
 ## Origin and assets
 
