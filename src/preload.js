@@ -1,6 +1,6 @@
 /**
  * 桌宠窗口的安全 preload bridge。
- * 页面没有 Node.js 权限，只能调用这里列出的拖拽、缩放、面板和订阅方法。
+ * 页面没有 Node.js 权限，只能调用这里列出的拖拽、面板和订阅方法。
  */
 const { contextBridge, ipcRenderer } = require("electron");
 
@@ -14,10 +14,8 @@ function subscribe(channel, callback) {
 
 contextBridge.exposeInMainWorld("taskPet", {
   getInitialState: () => ipcRenderer.invoke("taskpet:get-initial-state"),
-  getWindowBounds: () => ipcRenderer.invoke("taskpet:get-window-bounds"),
   startWindowDrag: () => ipcRenderer.send("taskpet:start-window-drag"),
   moveWindow: () => ipcRenderer.send("taskpet:move-window"),
-  resizeWindow: (payload) => ipcRenderer.invoke("taskpet:resize-window", payload),
   finishDrag: () => ipcRenderer.invoke("taskpet:finish-drag"),
   toggleTaskPanel: () => ipcRenderer.invoke("taskpet:toggle-task-panel"),
   setDragDirection: (direction) => ipcRenderer.send("taskpet:drag-direction", direction),

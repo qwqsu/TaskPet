@@ -54,6 +54,7 @@ Renderer → Preload → IPC → Main Process
 ### 应用外壳
 
 - `src/main.js`：Electron 入口，创建桌宠、托盘、TaskSystem，并注册桌宠 IPC。
+- `src/main/windows/tray-menu.ts`：P4 Tray 的固定顺序与动作模板。
 - `src/pet-window-options.js`：透明窗口尺寸、安全选项和多屏位置恢复。
 - `src/pet-window-drag.js`：根据系统鼠标坐标计算拖拽后的固定窗口边界。
 - `src/pet-library.js`：发现内置和 Codex-compatible 宠物包。
@@ -74,13 +75,22 @@ Renderer → Preload → IPC → Main Process
 - `src/main/process/process-monitor.ts`：低频扫描、启动识别和退出防抖。
 - `src/main/runtime/runtime-tracker.ts`：内存计时、Session、checkpoint、崩溃恢复和跨午夜。
 - `src/main/runtime/pet-state-machine.ts`：把任务事件转换为桌宠状态和显示文字。
+- `src/main/runtime/monitor-control.ts`：用户暂停/恢复时收尾 Session 并启停 monitor targets。
 - `src/main/task-system.ts`：把任务、监控、计时、IPC、面板和桌宠串起来。
+
+### 设置、数据与发布
+
+- `src/shared/app-settings.ts`：三档桌宠大小和设置 IPC 契约。
+- `src/main/services/login-item-service.ts`：Electron 登录启动能力。
+- `src/main/services/data-service.ts`：打开 userData 与 SQLite Online Backup 导出。
+- `src/main/ipc/register-settings-ipc.ts`：固定设置、数据和关于动作。
+- `src/app-logger.js`：不记录完整进程快照的本地低频日志。
 
 ### 界面
 
-- `src/renderer/renderer.js`：桌宠 sprite 动画、拖拽、缩放和状态显示。
+- `src/renderer/renderer.js`：桌宠 sprite 动画、拖拽和状态显示；大小由设置页三档预设控制。
 - `src/renderer/styles.css`：桌宠、任务文字和计时文字的位置与外观。
-- `src/renderer/panel/panel.ts`：今日任务、历史、编辑窗口和程序选择。
+- `src/renderer/panel/panel.ts`：今日任务、历史、编辑窗口、程序选择和简单设置页。
 - `src/renderer/panel/panel.css`：任务面板样式。
 
 ## 4. Task 与 TaskOccurrence
@@ -122,6 +132,7 @@ Renderer → Preload → IPC → Main Process
 | idle 状态颜文字及轮换间隔 | `src/renderer/renderer.js` 的 `IDLE_MESSAGES` / `IDLE_MESSAGE_INTERVAL_MS` |
 | 桌宠、文字纵向位置 | `src/renderer/renderer.js` 的 `--pet-top` / `--status-top` |
 | 桌宠窗口基础大小 | `src/pet-window-options.js` 的 `BASE_WINDOW_WIDTH/HEIGHT` |
+| 桌宠大小预设 | `src/shared/app-settings.ts` 的 `PET_SIZE_ZOOMS` |
 | 宠物动画行和帧间隔 | `src/pet-state.js` 的 `PET_STATE_DEFINITIONS` |
 | 多任务文字轮播间隔 | `PetStateMachineOptions.taskRotationMs`，默认 3000ms |
 | 完成动画显示时间 | `PetStateMachineOptions.doneDurationMs`，默认 2500ms |
@@ -155,6 +166,7 @@ npm run smoke
 npm run dev
 npm run dev:bounds
 npm run build:unpack
+npm run build:win
 ```
 
 `dev:bounds` 会显示红色窗口范围、绿色宠物区域和蓝色图片帧，适合调整桌宠位置与大小。

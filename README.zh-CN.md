@@ -2,15 +2,15 @@
 
 TaskPet 是一个本地优先的桌面任务助手，以常驻桌宠作为低打扰交互入口。
 
-当前分支已在 P1 任务系统上实现 Windows 程序监控与 duration 运行时阶段。仍不包含前台窗口计时、完整进程历史、提醒、Agent Hook、本地 HTTP API 或自动更新。
+当前分支已在 P0～P3 任务、程序监控和 duration 运行时核心上完成 P4 Windows 发布收尾。仍不包含前台窗口计时、完整进程历史、提醒、AI、云同步、Agent Hook、本地 HTTP API 或自动更新。
 
 ## 当前能力
 
 - Electron 透明、无边框桌宠窗口
 - 始终置顶，并跳过普通任务栏
 - 鼠标拖拽与窗口位置保存
-- 拖动缩放手柄与缩放比例保存
-- tray 显示/隐藏、宠物切换、重新加载与退出
+- 桌宠大小只提供并保存 125%、100%、50% 三档预设
+- 最终 Tray 流程：面板、快速添加、显示/隐藏、召回、暂停/恢复监控、开机启动、设置、宠物与退出
 - 内置宠物和 `~/.codex/pets` 下的 Codex-compatible spritesheet
 - 六个状态：`idle`、`working`、`done`、`attention`、`drag-left`、`drag-right`
 - `contextIsolation: true`、`nodeIntegration: false`
@@ -24,6 +24,9 @@ TaskPet 是一个本地优先的桌面任务助手，以常驻桌宠作为低打
 - 原生低频进程扫描、多 PID wall-clock 去重和退出防抖
 - 持久化 Process Session、30 秒 checkpoint、崩溃恢复和 daily 本地午夜切分
 - duration 自动完成、内存每秒 UI 计时，以及桌宠 `working` / `done` 联动
+- 简单设置页：Windows 开机启动、宠物与大小、始终置顶、数据和关于
+- SQLite 一致性导出、migration 前备份，以及位于 Electron `userData` 的隐私收敛日志
+- 带 TaskPet 元数据、图标资源和第三方声明的 Windows NSIS 安装包
 
 ## 本地开发
 
@@ -32,6 +35,7 @@ npm install
 npm test
 npm run smoke
 npm run build:unpack
+npm run build:win
 ```
 
 `npm run smoke` 会实际初始化桌宠 Renderer、任务面板 Renderer 和 SQLite，但不显示窗口；三者加载成功后自动退出。
@@ -78,7 +82,7 @@ Electron Main
     └── 面板 Preload → 今日任务 / 历史 Renderer
 ```
 
-系统能力只存在于 Main Process。两个 Preload 只暴露固定且经过校验的 API，Renderer 不直接访问文件系统、子进程、原生进程 API 或 SQLite。完整进程快照仅在内存中完成匹配后丢弃；任务规则与匹配任务的 Session 保存在 Electron `userData/taskpet.sqlite3`。
+系统能力只存在于 Main Process。两个 Preload 只暴露固定且经过校验的 API，Renderer 不直接访问文件系统、子进程、原生进程 API 或 SQLite。完整进程快照仅在内存中完成匹配后丢弃；任务规则与匹配任务的 Session 保存在 Electron `userData/taskpet.sqlite3`，设置、日志与备份位于同一个用户数据目录。自动更新保持禁用。
 
 ## 来源与资源说明
 

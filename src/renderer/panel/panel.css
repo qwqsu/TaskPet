@@ -120,7 +120,7 @@ h2 {
 
 .tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
   gap: 4px;
   margin: 24px 0 18px;
   padding: 4px;
@@ -259,6 +259,143 @@ h2 {
 
 .history-entry + .history-entry {
   margin-top: 8px;
+}
+
+/* ---------- P4 简单设置页 ---------- */
+
+.settings-stack {
+  display: grid;
+  gap: 12px;
+}
+
+.settings-card {
+  padding: 17px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(48, 43, 30, 0.045);
+}
+
+.settings-title {
+  margin: 0 0 14px;
+  color: var(--accent-strong);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.setting-row > span,
+.about-product > span {
+  display: grid;
+  gap: 4px;
+}
+
+.setting-row strong,
+.setting-field > span,
+.about-product strong {
+  font-size: 14px;
+}
+
+.setting-row small,
+.about-product small {
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.switch-input {
+  width: 19px;
+  height: 19px;
+  flex: none;
+  accent-color: var(--accent-strong);
+}
+
+.setting-field {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 16px;
+  color: #555a50;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.setting-field select {
+  width: 100%;
+  height: 41px;
+  padding: 0 11px;
+  border: 1px solid rgba(48, 51, 42, 0.17);
+  border-radius: 11px;
+  outline: none;
+  color: var(--ink);
+  background: #fff;
+}
+
+.size-presets {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 7px;
+}
+
+.size-presets button {
+  min-height: 48px;
+  padding: 7px 5px;
+  border: 1px solid var(--line);
+  border-radius: 11px;
+  color: var(--muted);
+  background: #fff;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.size-presets button small {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.size-presets button.active {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+}
+
+.settings-path {
+  overflow: hidden;
+  margin: -4px 0 12px;
+  color: var(--muted);
+  font: 11px/1.45 Consolas, "Microsoft YaHei UI", sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.about-product {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin-bottom: 13px;
+}
+
+.about-product img {
+  width: 42px;
+  height: 42px;
+  border-radius: 11px;
+}
+
+.about-card .text-button {
+  padding: 5px 0;
 }
 
 .hidden {

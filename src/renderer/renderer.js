@@ -1,12 +1,11 @@
 /**
  * 透明桌宠窗口的 Renderer。
- * 负责 spritesheet 动画、状态文字、点击/拖拽和缩放；所有系统操作经 window.taskPet preload 完成。
+ * 负责 spritesheet 动画、状态文字和点击/拖拽；尺寸只由设置页三档预设控制。
  */
 const pet = document.getElementById("pet");
 const stage = document.querySelector(".stage");
 const sprite = document.getElementById("sprite");
 const fallback = document.getElementById("fallback");
-const resizeHandle = document.getElementById("resizeHandle");
 const petStatus = document.getElementById("petStatus");
 const petStatusMessage = document.getElementById("petStatusMessage");
 const petStatusDetail = document.getElementById("petStatusDetail");
@@ -50,10 +49,8 @@ let frameTimer = null;
 let dragStart = null;
 let lastDragDirection = null;
 let zoom = 1;
-let minZoom = 0.65;
+let minZoom = 0.5;
 let maxZoom = 2.4;
-let resizeStart = null;
-let hideResizeTimer = null;
 let animationStarted = false;
 let idleMessageIndex = 0;
 let idleMessageTimer = null;
@@ -118,8 +115,6 @@ function applyZoom(nextZoom) {
   document.documentElement.style.setProperty("--pet-width", `${168 * zoom}px`);
   document.documentElement.style.setProperty("--pet-height", `${184 * zoom}px`);
   document.documentElement.style.setProperty("--sprite-left", `${1 * zoom}px`);
-  document.documentElement.style.setProperty("--handle-right", `${34 * zoom}px`);
-  document.documentElement.style.setProperty("--handle-top", `${126 * zoom}px`);
   document.documentElement.style.setProperty("--status-top", `${198 * zoom}px`);
   updateSpriteMetrics();
   drawFrame();
@@ -163,9 +158,6 @@ function setAnimationState(state) {
   animationStarted = true;
   frameIndex = 0;
   pet.dataset.state = currentState;
-  if (currentState !== "idle" && !resizeStart) {
-    stage.classList.remove("show-resize");
-  }
   drawFrame();
   scheduleNextFrame();
 }
@@ -233,7 +225,7 @@ function setPetState(payload) {
 // ---------- 单击与拖拽 ----------
 
 function startDrag(event) {
-  if (event.button !== 0 || event.target.closest("#resizeHandle")) return;
+  if (event.button !== 0) return;
   const pointerId = event.pointerId;
   pet.setPointerCapture(pointerId);
   window.taskPet.startWindowDrag();
@@ -275,62 +267,6 @@ function endDrag(event) {
   if (wasClick) window.taskPet.toggleTaskPanel();
 }
 
-// ---------- 宠物缩放 ----------
-
-function showResizeHandle() {
-  if (currentState !== "idle" && !resizeStart) return;
-  clearTimeout(hideResizeTimer);
-  stage.classList.add("show-resize");
-}
-
-function hideResizeHandleSoon() {
-  clearTimeout(hideResizeTimer);
-  hideResizeTimer = setTimeout(() => {
-    if (!resizeStart) stage.classList.remove("show-resize");
-  }, 180);
-}
-
-async function startResize(event) {
-  if (event.button !== 0) return;
-  event.preventDefault();
-  event.stopPropagation();
-
-  const pointerId = event.pointerId;
-  resizeHandle.setPointerCapture(pointerId);
-  const bounds = await window.taskPet.getWindowBounds();
-  if (!bounds || !resizeHandle.hasPointerCapture(pointerId)) return;
-  resizeStart = {
-    pointerId,
-    startScreenX: event.screenX,
-    startScreenY: event.screenY,
-    width: bounds.width,
-    height: bounds.height
-  };
-  showResizeHandle();
-}
-
-function moveResize(event) {
-  if (!resizeStart || event.pointerId !== resizeStart.pointerId) return;
-  event.preventDefault();
-  event.stopPropagation();
-
-  const dx = event.screenX - resizeStart.startScreenX;
-  const dy = event.screenY - resizeStart.startScreenY;
-  const widthZoom = (resizeStart.width + dx) / BASE_WINDOW_WIDTH;
-  const heightZoom = (resizeStart.height + dy) / BASE_WINDOW_HEIGHT;
-  const nextZoom = clampZoom(Math.max(widthZoom, heightZoom));
-  applyZoom(nextZoom);
-  window.taskPet.resizeWindow({ zoom: nextZoom });
-}
-
-function endResize(event) {
-  if (!resizeStart || event.pointerId !== resizeStart.pointerId) return;
-  event.preventDefault();
-  event.stopPropagation();
-  resizeStart = null;
-  hideResizeHandleSoon();
-}
-
 // ---------- 首次初始化与 DOM 事件绑定 ----------
 
 window.taskPet.getInitialState().then((initial) => {
@@ -355,12 +291,4 @@ pet.addEventListener("pointerdown", startDrag);
 pet.addEventListener("pointermove", moveDrag);
 pet.addEventListener("pointerup", endDrag);
 pet.addEventListener("pointercancel", endDrag);
-pet.addEventListener("pointerenter", showResizeHandle);
-pet.addEventListener("pointerleave", hideResizeHandleSoon);
-resizeHandle.addEventListener("pointerenter", showResizeHandle);
-resizeHandle.addEventListener("pointerleave", hideResizeHandleSoon);
-resizeHandle.addEventListener("pointerdown", startResize);
-resizeHandle.addEventListener("pointermove", moveResize);
-resizeHandle.addEventListener("pointerup", endResize);
-resizeHandle.addEventListener("pointercancel", endResize);
 window.addEventListener("beforeunload", stopIdleMessageRotation);

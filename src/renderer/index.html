@@ -1,5 +1,5 @@
 <!doctype html>
-<!-- 桌宠 Renderer：只包含 sprite、状态文字和缩放手柄，不直接访问 Node.js/SQLite。 -->
+<!-- 桌宠 Renderer：只包含 sprite 和状态文字，不直接访问 Node.js/SQLite。 -->
 <html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
@@ -26,10 +26,6 @@
         <span id="petStatusMessage" class="pet-status-message"></span>
         <span id="petStatusDetail" class="pet-status-detail"></span>
       </div>
-      <!-- 仅 idle + 鼠标靠近宠物时可操作的缩放入口。 -->
-      <button id="resizeHandle" class="resize-handle" type="button" aria-label="缩放桌面宠物">
-        <img class="resize-icon" src="./resize-handle.svg" alt="" aria-hidden="true" />
-      </button>
     </main>
     <script src="./renderer.js"></script>
   </body>

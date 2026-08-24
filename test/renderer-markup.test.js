@@ -15,6 +15,7 @@ test("pet renderer markup keeps the visible stage mounted", () => {
   assert.match(html, /id="sprite"/);
   assert.match(html, /id="petStatusMessage"/);
   assert.match(html, /id="petStatusDetail"/);
+  assert.doesNotMatch(html, /resizeHandle|resize-handle/);
   assert.doesNotMatch(html, /bubble|settings/i);
 });
 
@@ -105,4 +106,5 @@ test("pet dragging keeps native cursor coordinates and window bounds in the main
   assert.match(preload, /moveWindow: \(\) => ipcRenderer\.send\("taskpet:move-window"\)/);
   assert.doesNotMatch(source, /windowX: bounds\.x|windowY: bounds\.y/);
   assert.doesNotMatch(main, /petWindow\.setPosition\(/);
+  assert.doesNotMatch(preload, /resize-window|getWindowBounds|resizeWindow/);
 });

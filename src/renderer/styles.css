@@ -14,8 +14,6 @@
   --pet-width: 168px;
   --pet-height: 184px;
   --sprite-left: 1px;
-  --handle-right: 34px;
-  --handle-top: 126px;
   --status-top: 198px;
 }
 
@@ -161,66 +159,6 @@ body {
   background-repeat: no-repeat;
   image-rendering: auto;
   opacity: 0;
-}
-
-.resize-handle {
-  position: absolute;
-  right: var(--handle-right);
-  top: var(--handle-top);
-  width: 26px;
-  height: 26px;
-  display: block;
-  padding: 0;
-  margin: 0;
-  border: 1px solid rgba(20, 32, 48, 0.1);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.86);
-  color: #263241;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(6px);
-  cursor: nwse-resize;
-  z-index: 4;
-  opacity: 0;
-  transform: translateY(2px) scale(0.94);
-  transition: opacity 140ms ease, transform 140ms ease, background-color 140ms ease, border-color 140ms ease;
-  appearance: none;
-  -webkit-app-region: no-drag;
-  touch-action: none;
-  pointer-events: none;
-}
-
-.pet[data-state="idle"] ~ .resize-handle,
-.resize-handle:focus-visible {
-  opacity: 0.86;
-  transform: translateY(0) scale(1);
-  pointer-events: auto;
-}
-
-.stage:not(.show-resize) .resize-handle,
-.pet:not([data-state="idle"]) ~ .resize-handle {
-  opacity: 0;
-  transform: translateY(2px) scale(0.94);
-  pointer-events: none;
-}
-
-.resize-handle:hover,
-.resize-handle:focus-visible {
-  opacity: 1;
-  background: rgba(255, 255, 255, 0.9);
-  border-color: rgba(20, 32, 48, 0.12);
-  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14);
-}
-
-.resize-icon {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 18px;
-  height: 18px;
-  display: block;
-  pointer-events: none;
-  object-fit: contain;
-  transform: translate(-50%, -50%);
 }
 
 .sprite.ready {

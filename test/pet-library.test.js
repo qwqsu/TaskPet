@@ -130,5 +130,9 @@ test("pet manifests cannot load a spritesheet outside their package", () => {
   fs.writeFileSync(path.join(petsRoot, "outside.webp"), WEBP);
   writePet(petsRoot, "unsafe", { spritesheetPath: "../outside.webp" });
 
-  assert.deepEqual(discoverPets(petsRoot), []);
+  const errors = [];
+  assert.deepEqual(discoverPets(petsRoot, { onError: (message) => errors.push(message) }), []);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /Skipped invalid pet package/);
+  assert.equal(errors[0].includes(root), false);
 });

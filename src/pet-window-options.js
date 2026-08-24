@@ -4,7 +4,7 @@
  */
 const BASE_WINDOW_WIDTH = 240;
 const BASE_WINDOW_HEIGHT = 286;
-const MIN_ZOOM = 0.65;
+const MIN_ZOOM = 0.5;
 const MAX_ZOOM = 2.4;
 const MIN_VISIBLE_EDGE = 48;
 const WINDOW_EDGE_MARGIN = 24;
@@ -25,6 +25,17 @@ function getPetWindowSize(zoomInput) {
   return {
     width: Math.round(BASE_WINDOW_WIDTH * zoom),
     height: Math.round(BASE_WINDOW_HEIGHT * zoom)
+  };
+}
+
+function getCenteredPetBounds(workArea, zoomInput) {
+  const normalized = normalizeWorkArea(workArea);
+  if (!normalized) throw new TypeError("A valid display work area is required");
+  const size = getPetWindowSize(zoomInput);
+  return {
+    x: Math.round(normalized.x + (normalized.width - size.width) / 2),
+    y: Math.round(normalized.y + (normalized.height - size.height) / 2),
+    ...size
   };
 }
 
@@ -111,7 +122,7 @@ function createPetWindowOptions(options = {}) {
     maximizable: false,
     fullscreenable: false,
     show: false,
-    alwaysOnTop: true,
+    alwaysOnTop: options.alwaysOnTop !== false,
     skipTaskbar: true,
     hasShadow: false,
     webPreferences: {
@@ -133,6 +144,7 @@ module.exports = {
   MIN_ZOOM,
   clampZoom,
   createPetWindowOptions,
+  getCenteredPetBounds,
   getPetWindowSize,
   resolveVisiblePosition
 };

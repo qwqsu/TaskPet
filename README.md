@@ -2,15 +2,15 @@
 
 TaskPet is a local-first desktop task assistant that uses a small animated pet as its persistent entry point.
 
-This branch implements the Windows process-monitoring and duration-runtime stages on top of the P1 task system. It still excludes foreground-window tracking, general process history, reminders, Agent hooks, a local HTTP API, and automatic updates.
+This branch completes the P4 Windows release-polish stage on top of the P0-P3 task, process-monitoring, and duration-runtime core. It still excludes foreground-window tracking, general process history, reminders, AI, cloud sync, Agent hooks, a local HTTP API, and automatic updates.
 
 ## Current capabilities
 
 - Transparent, frameless Electron pet window
 - Always on top and hidden from the regular taskbar
 - Pointer dragging with persisted position
-- Resize handle with persisted zoom
-- System tray controls for show/hide, pet selection, pet reload, and quit
+- Three persisted pet-size presets: 125%, 100%, and 50%
+- Final Tray workflow: panel, quick add, show/hide, recall, pause/resume monitoring, auto start, settings, pets, and quit
 - Bundled and `~/.codex/pets` Codex-compatible spritesheets
 - Six TaskPet states: `idle`, `working`, `done`, `attention`, `drag-left`, and `drag-right`
 - Isolated renderer with `contextIsolation: true` and `nodeIntegration: false`
@@ -24,6 +24,9 @@ This branch implements the Windows process-monitoring and duration-runtime stage
 - Low-frequency native process scans with multi-PID wall-clock deduplication and exit debounce
 - Persistent process sessions, 30-second checkpoints, crash recovery, and local-midnight daily splitting
 - Duration completion with in-memory one-second UI updates and `working` / `done` pet feedback
+- A compact Settings page for Windows auto start, pet selection/size, always-on-top, data, and About
+- Consistent SQLite export, pre-migration backups, and privacy-scoped logs under Electron `userData`
+- Windows NSIS packaging with TaskPet metadata, icon resources, and third-party notices
 
 ## Development
 
@@ -32,6 +35,7 @@ npm install
 npm test
 npm run smoke
 npm run build:unpack
+npm run build:win
 ```
 
 The smoke command initializes the pet renderer, task-panel renderer, and SQLite without showing a window, then exits automatically.
@@ -78,7 +82,7 @@ Electron main
     └── panel preload → Today / History renderer
 ```
 
-System capabilities stay in the main process. Separate preloads expose fixed, validated APIs; neither renderer can access the filesystem, child processes, native process APIs, or SQLite. Full process snapshots remain in memory and are discarded after matching. Task rules and matching sessions are stored under Electron's `userData/taskpet.sqlite3`.
+System capabilities stay in the main process. Separate preloads expose fixed, validated APIs; neither renderer can access the filesystem, child processes, native process APIs, or SQLite. Full process snapshots remain in memory and are discarded after matching. Task rules and matching sessions are stored under Electron's `userData/taskpet.sqlite3`; settings, logs, and backups stay in that same user-data directory. Automatic updates remain disabled.
 
 ## Origin and assets
 

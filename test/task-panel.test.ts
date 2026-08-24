@@ -18,6 +18,15 @@ test("task panel keeps SQLite behind an isolated preload", () => {
   const preload = fs.readFileSync(path.join(root, "src", "preload", "panel-preload.ts"), "utf8");
   assert.match(html, /今日任务/);
   assert.match(html, /历史/);
+  assert.match(html, /data-view="settings"/);
+  assert.match(html, /开机自动启动/);
+  assert.match(html, /data-pet-size="large"[^>]*>大 <small>125%/);
+  assert.match(html, /data-pet-size="normal"[^>]*>正常 <small>100%/);
+  assert.match(html, /data-pet-size="small"[^>]*>小 <small>50%/);
+  assert.match(html, /打开数据目录/);
+  assert.match(html, /导出备份/);
+  assert.match(html, /第三方许可证/);
+  assert.doesNotMatch(html, /启动后自动开始监控|显示状态气泡|扫描间隔/);
   assert.match(html, /选择正在运行/);
   assert.match(html, /选择 exe 文件/);
   assert.doesNotMatch(renderer, /better-sqlite3|node:fs|child_process/);
@@ -25,5 +34,8 @@ test("task panel keeps SQLite behind an isolated preload", () => {
   assert.match(preload, /contextBridge\.exposeInMainWorld/);
   assert.match(preload, /taskpet:processes:list-running/);
   assert.match(preload, /taskpet:runtime:changed/);
+  assert.match(preload, /taskpet:settings:get/);
+  assert.match(preload, /taskpet:panel:command/);
+  assert.match(renderer, /openTaskDialog\(\)/);
   assert.doesNotMatch(renderer, /setInterval\s*\(/);
 });

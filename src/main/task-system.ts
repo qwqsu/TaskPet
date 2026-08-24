@@ -8,12 +8,19 @@ import {
   dialog,
   ipcMain,
   screen,
+  shell,
   type IpcMainEvent,
   type NativeImage,
   type Rectangle,
   type WebContents
 } from "electron";
 import { openTaskDatabase, type TaskDatabase } from "./db/database";
+import { latestSchemaVersion } from "./db/migrations";
+import type {
+  AppSettingsSnapshot,
+  PanelCommand,
+  UpdateAppSettingsInput
+} from "../shared/app-settings";
 import { PanelReadyInputSchema } from "../shared/task-schemas";
 import type {
   RunningProgram,
@@ -22,7 +29,9 @@ import type {
 } from "../shared/process-types";
 import { PROCESS_CHANNELS } from "./ipc/process-channels";
 import { registerProcessIpc } from "./ipc/register-process-ipc";
+import { registerSettingsIpc } from "./ipc/register-settings-ipc";
 import { registerTaskIpc } from "./ipc/register-task-ipc";
+import { SETTINGS_CHANNELS } from "./ipc/settings-channels";
 import { TASK_CHANNELS } from "./ipc/task-channels";
 import {
   ProcessMonitor,
@@ -33,19 +42,39 @@ import {
   type ProcessProvider
 } from "./process/process-provider";
 import { PetStateMachine, type RuntimePetState } from "./runtime/pet-state-machine";
+import { MonitorControl } from "./runtime/monitor-control";
 import { RuntimeTracker } from "./runtime/runtime-tracker";
 import { TaskEventBus } from "./runtime/task-event-bus";
+import { DataService } from "./services/data-service";
 import { ProcessRuleService } from "./services/process-rule-service";
 import { TaskService } from "./services/task-service";
 import { createTaskPanelWindowOptions } from "./windows/task-panel-window";
 
+export interface TaskSystemLogger {
+  info(message: string): void;
+  warn(message: string, error?: unknown): void;
+  error(message: string, error?: unknown): void;
+}
+
+export interface TaskSystemSettingsAdapter {
+  getSnapshot(): AppSettingsSnapshot;
+  update(input: UpdateAppSettingsInput): AppSettingsSnapshot;
+  openGitHub(): Promise<void>;
+  openLicenses(): Promise<void>;
+}
+
 export interface TaskSystemOptions {
   databasePath: string;
+  dataDirectory: string;
+  backupDirectory: string;
   panelPreloadPath: string;
   panelHtmlPath: string;
   icon?: NativeImage;
   onPetState: (state: RuntimePetState, message: string, detail?: string) => void;
   onPanelReady?: (ready: boolean) => void;
+  onMonitoringStateChanged?: (paused: boolean) => void;
+  settings: TaskSystemSettingsAdapter;
+  logger?: TaskSystemLogger;
   processProvider?: ProcessProvider;
 }
 
@@ -57,18 +86,38 @@ export class TaskSystem {
   private readonly events: TaskEventBus;
   private readonly runtime: RuntimeTracker;
   private readonly monitor: ProcessMonitor;
+  private readonly monitorControl: MonitorControl;
   private readonly petStateMachine: PetStateMachine;
+  private readonly dataService: DataService;
+  private readonly logger: TaskSystemLogger;
   private readonly disposeRuntimeEvents: () => void;
   private panelWindow: BrowserWindow | null = null;
   private pendingShow = false;
   private disposeTaskIpc: (() => void) | null = null;
   private disposeProcessIpc: (() => void) | null = null;
+  private disposeSettingsIpc: (() => void) | null = null;
   private midnightTimer: NodeJS.Timeout | null = null;
+  private pendingPanelCommand: PanelCommand | null = null;
+  private panelReady = false;
   private closing = false;
 
   constructor(private readonly options: TaskSystemOptions) {
     // 依赖在 Main Process 内组装；Renderer 只能看到 preload 暴露的最小 API。
-    this.database = openTaskDatabase(options.databasePath);
+    this.logger = options.logger ?? {
+      info: (message) => console.info(message),
+      warn: (message, error) => console.warn(message, error),
+      error: (message, error) => console.error(message, error)
+    };
+    this.database = openTaskDatabase(options.databasePath, {
+      backupDirectory: options.backupDirectory,
+      onBackupCreated: () => {
+        this.logger.info("Database pre-migration backup created");
+      },
+      onMigrationApplied: (migration) => {
+        this.logger.info(`Database migration applied: ${migration.name}`);
+      }
+    });
+    this.logger.info(`Database ready at schema ${latestSchemaVersion()}`);
     this.service = new TaskService(this.database);
     this.ruleService = new ProcessRuleService(this.database);
     this.processProvider = options.processProvider ?? createPlatformProcessProvider();
@@ -86,18 +135,31 @@ export class TaskSystem {
         this.runtime.suspectTaskExit(taskId, missingSince);
       },
       onStopped: (taskId, stoppedAt) => this.runtime.stopTask(taskId, stoppedAt),
-      onError: (error) => console.warn("TaskPet process scan failed", error)
+      onError: (error) => this.logger.warn("Process monitor scan failed", error)
     });
+    this.monitorControl = new MonitorControl(this.monitor, this.runtime);
     this.disposeRuntimeEvents = this.events.subscribe(
       (event) => this.handleRuntimeEvent(event)
     );
+    this.dataService = new DataService(this.database, {
+      databasePath: options.databasePath,
+      dataDirectory: options.dataDirectory,
+      backupDirectory: options.backupDirectory,
+      showSaveDialog: (dialogOptions) => {
+        return this.panelWindow && !this.panelWindow.isDestroyed()
+          ? dialog.showSaveDialog(this.panelWindow, dialogOptions)
+          : dialog.showSaveDialog(dialogOptions);
+      },
+      openPath: (targetPath) => shell.openPath(targetPath),
+      logger: this.logger
+    });
   }
 
   initialize(): void {
     // 初始化顺序：恢复旧 Session → 注册 IPC → 创建面板 → 建立监控目标 → 安排跨日刷新。
     const recovered = this.runtime.recoverStaleSessions();
     if (recovered > 0) {
-      console.info(`TaskPet recovered ${recovered} unfinished process session(s)`);
+      this.logger.info(`Recovered ${recovered} unfinished process session(s)`);
     }
 
     this.disposeTaskIpc = registerTaskIpc({
@@ -123,6 +185,20 @@ export class TaskSystem {
       beforeRuleChange: (taskId) => this.stopExternalRuntime(taskId),
       onChanged: () => this.handleStoredDataChanged()
     });
+    this.disposeSettingsIpc = registerSettingsIpc({
+      ipcMain,
+      isTrustedSender: (event) => this.isPanelSender(event),
+      getSettings: () => this.options.settings.getSnapshot(),
+      updateSettings: (input) => {
+        const snapshot = this.options.settings.update(input);
+        this.broadcastSettings(snapshot);
+        return snapshot;
+      },
+      openDataDirectory: () => this.dataService.openDataDirectory(),
+      exportBackup: () => this.dataService.exportBackup(),
+      openGitHub: () => this.options.settings.openGitHub(),
+      openLicenses: () => this.options.settings.openLicenses()
+    });
     ipcMain.on(TASK_CHANNELS.rendererReady, this.handleRendererReady);
     this.createPanelWindow();
     this.reconcileWatchTargets();
@@ -144,6 +220,32 @@ export class TaskSystem {
     this.showPanel(anchorBounds);
   }
 
+  showQuickAdd(anchorBounds?: Rectangle | null): void {
+    this.showPanelCommand("open-add-task", anchorBounds);
+  }
+
+  showSettings(anchorBounds?: Rectangle | null): void {
+    this.showPanelCommand("open-settings", anchorBounds);
+  }
+
+  get monitoringPaused(): boolean {
+    return this.monitorControl.isPaused;
+  }
+
+  setMonitoringPaused(paused: boolean): boolean {
+    const changed = this.monitorControl.setPaused(paused);
+    if (!changed) return false;
+    this.logger.info(paused ? "Task monitoring paused" : "Task monitoring resumed");
+    this.options.onMonitoringStateChanged?.(paused);
+    this.broadcastChanged();
+    this.broadcastRuntime();
+    return true;
+  }
+
+  notifySettingsChanged(): void {
+    this.broadcastSettings(this.options.settings.getSnapshot());
+  }
+
   showPanel(anchorBounds?: Rectangle | null): void {
     if (!this.panelWindow || this.panelWindow.isDestroyed()) {
       this.pendingShow = true;
@@ -159,6 +261,7 @@ export class TaskSystem {
 
     this.panelWindow.show();
     this.panelWindow.focus();
+    this.flushPanelCommand();
   }
 
   close(): void {
@@ -175,12 +278,16 @@ export class TaskSystem {
     this.disposeTaskIpc = null;
     this.disposeProcessIpc?.();
     this.disposeProcessIpc = null;
+    this.disposeSettingsIpc?.();
+    this.disposeSettingsIpc = null;
     ipcMain.removeListener(TASK_CHANNELS.rendererReady, this.handleRendererReady);
 
     if (this.panelWindow && !this.panelWindow.isDestroyed()) {
       this.panelWindow.destroy();
     }
     this.panelWindow = null;
+    this.panelReady = false;
+    this.pendingPanelCommand = null;
 
     if (this.database.open) this.database.close();
   }
@@ -202,6 +309,7 @@ export class TaskSystem {
     this.broadcastRuntime();
     if (event.type !== "TASK_PROGRESS") this.broadcastChanged();
     if (event.type === "TASK_COMPLETED") {
+      this.logger.info(`Task completed: ${event.task.title}`);
       // 等完成事件当前调用栈结束后再移除监控目标，避免修改正在遍历的数据。
       queueMicrotask(() => {
         if (!this.closing) this.reconcileWatchTargets();
@@ -224,7 +332,12 @@ export class TaskSystem {
       const rules = rulesByTask.get(item.task.id) ?? [];
       if (rules.length > 0) targets.push({ taskId: item.task.id, rules });
     }
-    this.monitor.setTargets(targets);
+    this.monitorControl.setTargets(targets);
+  }
+
+  private showPanelCommand(command: PanelCommand, anchorBounds?: Rectangle | null): void {
+    this.pendingPanelCommand = command;
+    this.showPanel(anchorBounds);
   }
 
   private async pickWindowsExecutable(): Promise<RunningProgram | null> {
@@ -276,6 +389,7 @@ export class TaskSystem {
       icon: this.options.icon
     }));
     this.panelWindow = panelWindow;
+    this.panelReady = false;
 
     panelWindow.loadFile(this.options.panelHtmlPath);
     panelWindow.once("ready-to-show", () => {
@@ -284,14 +398,33 @@ export class TaskSystem {
       this.positionPanel(null);
       panelWindow.show();
       panelWindow.focus();
+      this.flushPanelCommand();
     });
     panelWindow.webContents.on("did-fail-load", (_event, code, description) => {
       console.error(`TaskPet task panel failed to load (${code}): ${description}`);
       this.options.onPanelReady?.(false);
     });
     panelWindow.on("closed", () => {
-      if (this.panelWindow === panelWindow) this.panelWindow = null;
+      if (this.panelWindow === panelWindow) {
+        this.panelWindow = null;
+        this.panelReady = false;
+      }
     });
+  }
+
+  private flushPanelCommand(): void {
+    if (
+      !this.pendingPanelCommand
+      || !this.panelReady
+      || !this.panelWindow
+      || this.panelWindow.isDestroyed()
+      || this.panelWindow.webContents.isLoading()
+    ) {
+      return;
+    }
+    const command = this.pendingPanelCommand;
+    this.pendingPanelCommand = null;
+    this.panelWindow.webContents.send(SETTINGS_CHANNELS.panelCommand, command);
   }
 
   private positionPanel(anchorBounds?: Rectangle | null): void {
@@ -341,12 +474,27 @@ export class TaskSystem {
     );
   }
 
+  private broadcastSettings(snapshot: AppSettingsSnapshot): void {
+    if (!this.panelWindow || this.panelWindow.isDestroyed()) return;
+    this.panelWindow.webContents.send(SETTINGS_CHANNELS.changed, snapshot);
+  }
+
   private readonly handleRendererReady = (
     event: IpcMainEvent,
     payload: unknown
   ): void => {
     if (!this.isPanelSender(event)) return;
     const parsed = PanelReadyInputSchema.safeParse(payload);
-    this.options.onPanelReady?.(parsed.success && parsed.data.ok);
+    const ready = parsed.success && parsed.data.ok;
+    this.panelReady = ready;
+    this.options.onPanelReady?.(ready);
+    if (ready) {
+      if (this.pendingShow && this.panelWindow && !this.panelWindow.isDestroyed()) {
+        this.pendingShow = false;
+        this.panelWindow.show();
+        this.panelWindow.focus();
+      }
+      this.flushPanelCommand();
+    }
   };
 }

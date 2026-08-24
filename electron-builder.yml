@@ -2,6 +2,7 @@ appId: com.taskpet.shell
 productName: TaskPet
 copyright: Copyright © 2026 TaskPet contributors
 icon: src/assets/logo.png
+publish: null
 
 directories:
   output: dist
@@ -25,11 +26,15 @@ asarUnpack:
   - node_modules/koffi/**
   - node_modules/@koromix/**
 
+extraResources:
+  - from: THIRD_PARTY_LICENSES.txt
+    to: THIRD_PARTY_LICENSES.txt
+
 win:
   executableName: TaskPet
-  # P0 produces an unsigned shell build. Enable resource editing/signing with the
-  # TaskPet release certificate when the formal release pipeline is established.
-  signAndEditExecutable: false
+  # P4 remains unsigned, but resource editing stays enabled so the TaskPet icon
+  # and executable metadata are applied to Windows artifacts.
+  signAndEditExecutable: true
   target:
     - target: nsis
       arch:
@@ -37,6 +42,7 @@ win:
 
 nsis:
   oneClick: false
+  differentialPackage: false
   allowElevation: true
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always

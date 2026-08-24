@@ -24,10 +24,11 @@
         <button id="addTaskButton" class="primary-button" type="button">＋ 添加</button>
       </header>
 
-      <!-- 首版只保留今日与历史两个页面。 -->
+      <!-- 今日、历史和 P4 简单设置页。 -->
       <nav class="tabs" aria-label="任务页面">
         <button class="tab active" type="button" data-view="today" aria-selected="true">今日</button>
         <button class="tab" type="button" data-view="history" aria-selected="false">历史</button>
+        <button class="tab" type="button" data-view="settings" aria-selected="false">设置</button>
       </nav>
 
       <p id="statusMessage" class="status-message" role="status" aria-live="polite"></p>
@@ -39,6 +40,68 @@
 
       <section id="historyView" class="view hidden" aria-label="最近 30 天历史">
         <div id="historyList" class="history-list"></div>
+      </section>
+
+      <section id="settingsView" class="view hidden" aria-label="TaskPet 设置">
+        <div class="settings-stack">
+          <section class="settings-card" aria-labelledby="generalSettingsTitle">
+            <h2 id="generalSettingsTitle" class="settings-title">常规</h2>
+            <label class="setting-row">
+              <span>
+                <strong>开机自动启动</strong>
+                <small id="autoStartHint">登录 Windows 后启动 TaskPet</small>
+              </span>
+              <input id="autoStartToggle" class="switch-input" type="checkbox" />
+            </label>
+          </section>
+
+          <section class="settings-card" aria-labelledby="petSettingsTitle">
+            <h2 id="petSettingsTitle" class="settings-title">桌宠</h2>
+            <label class="setting-field">
+              <span>宠物</span>
+              <select id="petSelect"></select>
+            </label>
+            <div class="setting-field">
+              <span>桌宠大小</span>
+              <div class="size-presets" role="group" aria-label="桌宠大小">
+                <button type="button" data-pet-size="large" aria-pressed="false">大 <small>125%</small></button>
+                <button type="button" data-pet-size="normal" aria-pressed="false">正常 <small>100%</small></button>
+                <button type="button" data-pet-size="small" aria-pressed="false">小 <small>50%</small></button>
+              </div>
+            </div>
+            <label class="setting-row">
+              <span>
+                <strong>始终置顶</strong>
+                <small>让桌宠保持在其他窗口上方</small>
+              </span>
+              <input id="alwaysOnTopToggle" class="switch-input" type="checkbox" />
+            </label>
+          </section>
+
+          <section class="settings-card" aria-labelledby="dataSettingsTitle">
+            <h2 id="dataSettingsTitle" class="settings-title">数据</h2>
+            <p id="dataDirectoryPath" class="settings-path"></p>
+            <div class="settings-actions">
+              <button id="openDataDirectoryButton" class="secondary-button" type="button">打开数据目录</button>
+              <button id="exportBackupButton" class="secondary-button" type="button">导出备份</button>
+            </div>
+          </section>
+
+          <section class="settings-card about-card" aria-labelledby="aboutSettingsTitle">
+            <h2 id="aboutSettingsTitle" class="settings-title">关于</h2>
+            <div class="about-product">
+              <img src="../../assets/logo.png" alt="" />
+              <span>
+                <strong id="aboutAppName">TaskPet</strong>
+                <small>版本 <span id="aboutVersion">—</span></small>
+              </span>
+            </div>
+            <div class="settings-actions">
+              <button id="openGitHubButton" class="text-button" type="button">GitHub</button>
+              <button id="openLicensesButton" class="text-button" type="button">第三方许可证</button>
+            </div>
+          </section>
+        </div>
       </section>
     </main>
 

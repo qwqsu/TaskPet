@@ -3,8 +3,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import Database from "better-sqlite3";
 import { openTaskDatabase } from "../src/main/db/database";
 import { migrateDatabase, latestSchemaVersion } from "../src/main/db/migrations";
+import { initialMigration } from "../src/main/db/migrations/001-init";
 import { SettingsRepository } from "../src/main/db/task-repository";
 import { createTaskHarness } from "./task-test-helpers";
 
@@ -73,6 +75,66 @@ test("a migrated on-disk database can be reopened with its data intact", () => {
     );
   } finally {
     if (database.open) database.close();
+    fs.rmSync(temporaryRoot, { recursive: true, force: true });
+  }
+});
+
+test("an existing database is backed up before a pending migration", () => {
+  const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "taskpet-migration-backup-"));
+  const databasePath = path.join(temporaryRoot, "taskpet.sqlite3");
+  const backupDirectory = path.join(temporaryRoot, "backups");
+  const legacy = new Database(databasePath);
+  legacy.exec(`
+    CREATE TABLE schema_version (
+      version INTEGER PRIMARY KEY,
+      name TEXT NOT NULL,
+      applied_at TEXT NOT NULL
+    );
+    ${initialMigration.sql}
+  `);
+  legacy.prepare(`
+    INSERT INTO schema_version (version, name, applied_at)
+    VALUES (1, '001_init', '2026-08-23T00:00:00.000Z')
+  `).run();
+  legacy.prepare("INSERT INTO settings (key, value) VALUES (?, ?)")
+    .run("before.migration", "preserved");
+  legacy.close();
+
+  const createdBackups: string[] = [];
+  const database = openTaskDatabase(databasePath, {
+    backupDirectory,
+    migrationTimestamp: "2026-08-24T01:02:03.000Z",
+    onBackupCreated: (backupPath) => createdBackups.push(backupPath)
+  });
+
+  try {
+    assert.equal(createdBackups.length, 1);
+    assert.equal(fs.existsSync(createdBackups[0]!), true);
+    assert.equal(latestSchemaVersion(), 2);
+    assert.equal(
+      (database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
+      2
+    );
+
+    const backup = new Database(createdBackups[0]!, { readonly: true });
+    try {
+      assert.equal(
+        (backup.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
+        1
+      );
+      assert.equal(
+        (backup.prepare("SELECT value FROM settings WHERE key = ?").get("before.migration") as { value: string }).value,
+        "preserved"
+      );
+      assert.equal(
+        (backup.prepare("SELECT COUNT(*) AS count FROM sqlite_master WHERE name = 'process_sessions'").get() as { count: number }).count,
+        0
+      );
+    } finally {
+      backup.close();
+    }
+  } finally {
+    database.close();
     fs.rmSync(temporaryRoot, { recursive: true, force: true });
   }
 });

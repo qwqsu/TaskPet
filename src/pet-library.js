@@ -103,7 +103,7 @@ function getActivePetsRoot({ codexHome, settings = {} }) {
   };
 }
 
-function discoverPetsInDirectory(petsRoot, source = "pets") {
+function discoverPetsInDirectory(petsRoot, source = "pets", onError = () => {}) {
   const prefix = source === "builtin" ? "builtin" : "pets";
   return listDirectories(petsRoot)
     .map((dir) => {
@@ -111,7 +111,10 @@ function discoverPetsInDirectory(petsRoot, source = "pets") {
       const id = String(manifest.id || path.basename(dir));
       const spritesheetPath = resolveSpritesheetPath(dir, manifest.spritesheetPath);
 
-      if (!spritesheetPath || !fs.existsSync(spritesheetPath)) return null;
+      if (!spritesheetPath || !fs.existsSync(spritesheetPath)) {
+        onError(`Skipped invalid pet package: ${path.basename(dir)}`);
+        return null;
+      }
 
       return {
         id,
@@ -131,11 +134,11 @@ function discoverPetsInDirectory(petsRoot, source = "pets") {
 function discoverPets(petsRoot, options = {}) {
   // 内置宠物排在前面，保证用户目录为空时仍有可显示的默认资源。
   const bundledPets = options.bundledPetsRoot
-    ? discoverPetsInDirectory(options.bundledPetsRoot, "builtin")
+    ? discoverPetsInDirectory(options.bundledPetsRoot, "builtin", options.onError)
     : [];
   return [
     ...bundledPets,
-    ...discoverPetsInDirectory(petsRoot, "pets")
+    ...discoverPetsInDirectory(petsRoot, "pets", options.onError)
   ];
 }
 

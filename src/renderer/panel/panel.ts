@@ -6,6 +6,9 @@ type TaskType = "daily" | "one_time";
 type CompletionMode = "manual" | "duration" | "process_start" | "process_exit";
 type OccurrenceStatus = "pending" | "active" | "completed";
 type ProcessMatchMode = "exact_path" | "process_name";
+type PetSize = "large" | "normal" | "small";
+type PanelView = "today" | "history" | "settings";
+type PanelCommand = "open-add-task" | "open-settings";
 
 interface Task {
   id: string;
@@ -65,6 +68,24 @@ interface RuntimeTaskSnapshot {
   active: boolean;
 }
 
+interface AppSettingsSnapshot {
+  autoStart: boolean;
+  autoStartSupported: boolean;
+  petSize: PetSize;
+  alwaysOnTop: boolean;
+  activePetKey: string | null;
+  pets: Array<{ key: string; displayName: string; sourceLabel: string }>;
+  dataDirectory: string;
+  appName: string;
+  version: string;
+  githubUrl: string;
+}
+
+interface DataActionResult {
+  canceled: boolean;
+  filePath: string | null;
+}
+
 type ApiResult<T> =
   | { ok: true; data: T }
   | { ok: false; error: { code: string; message: string } };
@@ -110,11 +131,32 @@ interface RuntimeBridge {
   onChanged(callback: (snapshots: RuntimeTaskSnapshot[]) => void): () => void;
 }
 
+interface SettingsBridge {
+  get(): Promise<ApiResult<AppSettingsSnapshot>>;
+  update(input: {
+    autoStart?: boolean;
+    petSize?: PetSize;
+    alwaysOnTop?: boolean;
+    activePetKey?: string;
+  }): Promise<ApiResult<AppSettingsSnapshot>>;
+  openDataDirectory(): Promise<ApiResult<DataActionResult>>;
+  exportBackup(): Promise<ApiResult<DataActionResult>>;
+  openGitHub(): Promise<ApiResult<void>>;
+  openLicenses(): Promise<ApiResult<void>>;
+  onChanged(callback: (snapshot: AppSettingsSnapshot) => void): () => void;
+}
+
+interface UiBridge {
+  onCommand(callback: (command: PanelCommand) => void): () => void;
+}
+
 interface TaskPetPanelWindow extends Window {
   taskPet: {
     tasks: TaskBridge;
     processes: ProcessBridge;
     runtime: RuntimeBridge;
+    settings: SettingsBridge;
+    ui: UiBridge;
   };
 }
 
@@ -166,11 +208,14 @@ const panelWindow = window as unknown as TaskPetPanelWindow;
 const taskApi = panelWindow.taskPet.tasks;
 const processApi = panelWindow.taskPet.processes;
 const runtimeApi = panelWindow.taskPet.runtime;
+const settingsApi = panelWindow.taskPet.settings;
+const uiApi = panelWindow.taskPet.ui;
 const pageTitle = elementById<HTMLHeadingElement>("pageTitle");
 const todaySummary = elementById<HTMLParagraphElement>("todaySummary");
 const statusMessage = elementById<HTMLParagraphElement>("statusMessage");
 const todayView = elementById<HTMLElement>("todayView");
 const historyView = elementById<HTMLElement>("historyView");
+const settingsView = elementById<HTMLElement>("settingsView");
 const todayList = elementById<HTMLDivElement>("todayList");
 const historyList = elementById<HTMLDivElement>("historyList");
 const addTaskButton = elementById<HTMLButtonElement>("addTaskButton");
@@ -195,12 +240,20 @@ const chooseRunningButton = elementById<HTMLButtonElement>("chooseRunningButton"
 const chooseExeButton = elementById<HTMLButtonElement>("chooseExeButton");
 const runningProgramPicker = elementById<HTMLElement>("runningProgramPicker");
 const runningProgramList = elementById<HTMLDivElement>("runningProgramList");
+const autoStartToggle = elementById<HTMLInputElement>("autoStartToggle");
+const autoStartHint = elementById<HTMLElement>("autoStartHint");
+const petSelect = elementById<HTMLSelectElement>("petSelect");
+const alwaysOnTopToggle = elementById<HTMLInputElement>("alwaysOnTopToggle");
+const dataDirectoryPath = elementById<HTMLElement>("dataDirectoryPath");
+const aboutAppName = elementById<HTMLElement>("aboutAppName");
+const aboutVersion = elementById<HTMLElement>("aboutVersion");
 
-let currentView: "today" | "history" = "today";
+let currentView: PanelView = "today";
 let todayItems = new Map<string, TaskListItem>();
 let rulesByTask = new Map<string, TaskProcessRule[]>();
 let runtimeByOccurrence = new Map<string, RuntimeTaskSnapshot>();
 let selectedProgram: RunningProgram | null = null;
+let currentSettings: AppSettingsSnapshot | null = null;
 
 // ---------- 今日任务与历史渲染 ----------
 
@@ -349,6 +402,39 @@ function renderHistory(days: HistoryDay[]): void {
   historyList.replaceChildren(fragment);
 }
 
+function renderSettings(snapshot: AppSettingsSnapshot): void {
+  currentSettings = snapshot;
+  todaySummary.textContent = "本地设置会立即生效";
+  autoStartToggle.checked = snapshot.autoStart;
+  autoStartToggle.disabled = !snapshot.autoStartSupported;
+  autoStartHint.textContent = snapshot.autoStartSupported
+    ? "登录 Windows 后启动 TaskPet"
+    : "开机启动仅在 TaskPet 安装版中可用";
+  alwaysOnTopToggle.checked = snapshot.alwaysOnTop;
+
+  const options = snapshot.pets.map((pet) => {
+    const option = document.createElement("option");
+    option.value = pet.key;
+    option.textContent = `${pet.displayName} · ${pet.sourceLabel}`;
+    return option;
+  });
+  petSelect.replaceChildren(...options);
+  petSelect.disabled = options.length === 0;
+  if (snapshot.activePetKey) petSelect.value = snapshot.activePetKey;
+
+  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-pet-size]")) {
+    const active = button.dataset.petSize === snapshot.petSize;
+    button.classList.toggle("active", active);
+    button.setAttribute("aria-pressed", String(active));
+  }
+
+  dataDirectoryPath.textContent = snapshot.dataDirectory;
+  dataDirectoryPath.title = snapshot.dataDirectory;
+  aboutAppName.textContent = snapshot.appName;
+  aboutVersion.textContent = snapshot.version;
+  elementById<HTMLButtonElement>("openGitHubButton").title = snapshot.githubUrl;
+}
+
 // ---------- 从 Main Process 刷新数据 ----------
 
 function groupRules(rules: TaskProcessRule[]): Map<string, TaskProcessRule[]> {
@@ -384,6 +470,40 @@ async function refreshHistory(): Promise<void> {
     fromDate: toDateKey(from),
     toDate: toDateKey(to)
   })));
+}
+
+async function refreshSettings(): Promise<void> {
+  setStatus();
+  renderSettings(unwrap(await settingsApi.get()));
+}
+
+async function updateSetting(input: Parameters<SettingsBridge["update"]>[0]): Promise<void> {
+  try {
+    setStatus();
+    renderSettings(unwrap(await settingsApi.update(input)));
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "无法更新设置");
+    if (currentSettings) renderSettings(currentSettings);
+  }
+}
+
+async function openDataDirectory(): Promise<void> {
+  try {
+    setStatus();
+    unwrap(await settingsApi.openDataDirectory());
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "无法打开数据目录");
+  }
+}
+
+async function exportBackup(): Promise<void> {
+  try {
+    setStatus();
+    const result = unwrap(await settingsApi.exportBackup());
+    if (!result.canceled && result.filePath) setStatus(`备份已导出：${result.filePath}`);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "无法导出备份");
+  }
 }
 
 async function changeCompletion(item: TaskListItem, complete: boolean): Promise<void> {
@@ -481,6 +601,7 @@ async function chooseExecutable(): Promise<void> {
 }
 
 function openTaskDialog(item?: TaskListItem): void {
+  if (taskDialog.open) taskDialog.close();
   taskForm.reset();
   setStatus();
   runningProgramPicker.classList.add("hidden");
@@ -586,11 +707,15 @@ async function archiveEditingTask(): Promise<void> {
   }
 }
 
-async function switchView(view: "today" | "history"): Promise<void> {
+async function switchView(view: PanelView): Promise<void> {
   currentView = view;
-  pageTitle.textContent = view === "today" ? "今日任务" : "完成历史";
+  pageTitle.textContent = view === "today"
+    ? "今日任务"
+    : view === "history" ? "完成历史" : "设置";
   todayView.classList.toggle("hidden", view !== "today");
   historyView.classList.toggle("hidden", view !== "history");
+  settingsView.classList.toggle("hidden", view !== "settings");
+  addTaskButton.classList.toggle("hidden", view !== "today");
   for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
     const active = tab.dataset.view === view;
     tab.classList.toggle("active", active);
@@ -599,10 +724,20 @@ async function switchView(view: "today" | "history"): Promise<void> {
 
   try {
     if (view === "today") await refreshToday();
-    else await refreshHistory();
+    else if (view === "history") await refreshHistory();
+    else await refreshSettings();
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "无法读取任务");
+    setStatus(error instanceof Error ? error.message : "无法读取页面");
   }
+}
+
+async function handlePanelCommand(command: PanelCommand): Promise<void> {
+  if (command === "open-settings") {
+    await switchView("settings");
+    return;
+  }
+  await switchView("today");
+  openTaskDialog();
 }
 
 // ---------- 用户事件、Main 推送订阅与初始化 ----------
@@ -622,14 +757,51 @@ clearProgramButton.addEventListener("click", () => {
 elementById<HTMLButtonElement>("closeRunningPickerButton").addEventListener("click", () => {
   runningProgramPicker.classList.add("hidden");
 });
+autoStartToggle.addEventListener("change", () => {
+  void updateSetting({ autoStart: autoStartToggle.checked });
+});
+alwaysOnTopToggle.addEventListener("change", () => {
+  void updateSetting({ alwaysOnTop: alwaysOnTopToggle.checked });
+});
+petSelect.addEventListener("change", () => {
+  if (petSelect.value) void updateSetting({ activePetKey: petSelect.value });
+});
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-pet-size]")) {
+  button.addEventListener("click", () => {
+    const size = button.dataset.petSize;
+    if (size === "large" || size === "normal" || size === "small") {
+      void updateSetting({ petSize: size });
+    }
+  });
+}
+elementById<HTMLButtonElement>("openDataDirectoryButton").addEventListener("click", () => {
+  void openDataDirectory();
+});
+elementById<HTMLButtonElement>("exportBackupButton").addEventListener("click", () => {
+  void exportBackup();
+});
+elementById<HTMLButtonElement>("openGitHubButton").addEventListener("click", () => {
+  void settingsApi.openGitHub().then(unwrap).catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "无法打开 GitHub");
+  });
+});
+elementById<HTMLButtonElement>("openLicensesButton").addEventListener("click", () => {
+  void settingsApi.openLicenses().then(unwrap).catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "无法打开第三方许可证");
+  });
+});
 for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
   tab.addEventListener("click", () => {
-    void switchView(tab.dataset.view === "history" ? "history" : "today");
+    const view = tab.dataset.view;
+    void switchView(view === "history" || view === "settings" ? view : "today");
   });
 }
 
 const unsubscribeStored = taskApi.onChanged(() => {
-  void (currentView === "today" ? refreshToday() : refreshHistory()).catch((error: unknown) => {
+  const refresh = currentView === "today"
+    ? refreshToday()
+    : currentView === "history" ? refreshHistory() : Promise.resolve();
+  void refresh.catch((error: unknown) => {
     setStatus(error instanceof Error ? error.message : "无法刷新任务");
   });
 });
@@ -642,9 +814,22 @@ const unsubscribeRuntime = runtimeApi.onChanged((snapshots) => {
   if (currentView === "today") renderToday([...todayItems.values()]);
 });
 
+const unsubscribeSettings = settingsApi.onChanged((snapshot) => {
+  if (currentView === "settings") renderSettings(snapshot);
+  else currentSettings = snapshot;
+});
+
+const unsubscribeCommands = uiApi.onCommand((command) => {
+  void handlePanelCommand(command).catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "无法执行面板操作");
+  });
+});
+
 window.addEventListener("beforeunload", () => {
   unsubscribeStored();
   unsubscribeRuntime();
+  unsubscribeSettings();
+  unsubscribeCommands();
 });
 
 void refreshToday().then(() => {

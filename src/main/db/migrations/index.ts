@@ -8,6 +8,11 @@ import { processRuntimeMigration } from "./002-process-runtime";
 
 const migrations: readonly Migration[] = [initialMigration, processRuntimeMigration];
 
+export interface MigrationHooks {
+  beforeApply?(pendingMigrations: readonly Migration[]): void;
+  onApplied?(migration: Migration): void;
+}
+
 interface SchemaVersionRow {
   version: number;
   name: string;
@@ -15,7 +20,8 @@ interface SchemaVersionRow {
 
 export function migrateDatabase(
   database: Database.Database,
-  appliedAt = new Date().toISOString()
+  appliedAt = new Date().toISOString(),
+  hooks: MigrationHooks = {}
 ): void {
   database.exec(`
     CREATE TABLE IF NOT EXISTS schema_version (
@@ -47,15 +53,21 @@ export function migrateDatabase(
     `).run(migration.version, migration.name, appliedAt);
   });
 
-  for (const migration of migrations) {
+  const pendingMigrations = migrations.filter((migration) => {
     const appliedName = applied.get(migration.version);
-    if (appliedName === migration.name) continue;
+    if (appliedName === migration.name) return false;
     if (appliedName) {
       throw new Error(
         `TaskPet database migration ${migration.version} is recorded as ${appliedName}, expected ${migration.name}`
       );
     }
+    return true;
+  });
+
+  if (pendingMigrations.length > 0) hooks.beforeApply?.(pendingMigrations);
+  for (const migration of pendingMigrations) {
     applyMigration(migration);
+    hooks.onApplied?.(migration);
   }
 }
 
