@@ -10,6 +10,7 @@ import {
   screen,
   shell,
   type IpcMainEvent,
+  type IpcMainInvokeEvent,
   type NativeImage,
   type Rectangle,
   type WebContents
@@ -47,7 +48,9 @@ import { RuntimeTracker } from "./runtime/runtime-tracker";
 import { TaskEventBus } from "./runtime/task-event-bus";
 import { DataService } from "./services/data-service";
 import { ProcessRuleService } from "./services/process-rule-service";
-import { TaskService } from "./services/task-service";
+import { TaskService, TaskServiceError } from "./services/task-service";
+import { TimeStatsService } from "./services/time-stats-service";
+import { createSettingsWindowOptions } from "./windows/settings-window";
 import { createTaskPanelWindowOptions } from "./windows/task-panel-window";
 
 export interface TaskSystemLogger {
@@ -69,9 +72,12 @@ export interface TaskSystemOptions {
   backupDirectory: string;
   panelPreloadPath: string;
   panelHtmlPath: string;
+  settingsPreloadPath: string;
+  settingsHtmlPath: string;
   icon?: NativeImage;
   onPetState: (state: RuntimePetState, message: string, detail?: string) => void;
   onPanelReady?: (ready: boolean) => void;
+  onSettingsReady?: (ready: boolean) => void;
   onMonitoringStateChanged?: (paused: boolean) => void;
   settings: TaskSystemSettingsAdapter;
   logger?: TaskSystemLogger;
@@ -82,6 +88,7 @@ export class TaskSystem {
   private readonly database: TaskDatabase;
   private readonly service: TaskService;
   private readonly ruleService: ProcessRuleService;
+  private readonly timeStats: TimeStatsService;
   private readonly processProvider: ProcessProvider;
   private readonly events: TaskEventBus;
   private readonly runtime: RuntimeTracker;
@@ -92,7 +99,9 @@ export class TaskSystem {
   private readonly logger: TaskSystemLogger;
   private readonly disposeRuntimeEvents: () => void;
   private panelWindow: BrowserWindow | null = null;
+  private settingsWindow: BrowserWindow | null = null;
   private pendingShow = false;
+  private pendingSettingsShow = false;
   private disposeTaskIpc: (() => void) | null = null;
   private disposeProcessIpc: (() => void) | null = null;
   private disposeSettingsIpc: (() => void) | null = null;
@@ -123,6 +132,7 @@ export class TaskSystem {
     this.processProvider = options.processProvider ?? createPlatformProcessProvider();
     this.events = new TaskEventBus();
     this.runtime = new RuntimeTracker(this.database, this.events);
+    this.timeStats = new TimeStatsService(this.database, this.runtime);
     this.petStateMachine = new PetStateMachine(this.events, {
       setState: (state, message, detail) => this.options.onPetState(state, message, detail)
     });
@@ -146,8 +156,13 @@ export class TaskSystem {
       dataDirectory: options.dataDirectory,
       backupDirectory: options.backupDirectory,
       showSaveDialog: (dialogOptions) => {
-        return this.panelWindow && !this.panelWindow.isDestroyed()
-          ? dialog.showSaveDialog(this.panelWindow, dialogOptions)
+        const parent = this.settingsWindow && !this.settingsWindow.isDestroyed()
+          ? this.settingsWindow
+          : this.panelWindow && !this.panelWindow.isDestroyed()
+            ? this.panelWindow
+            : null;
+        return parent
+          ? dialog.showSaveDialog(parent, dialogOptions)
           : dialog.showSaveDialog(dialogOptions);
       },
       openPath: (targetPath) => shell.openPath(targetPath),
@@ -173,7 +188,8 @@ export class TaskSystem {
       },
       onChanged: () => this.handleStoredDataChanged(),
       onCompleted: (item) => this.runtime.announceManualCompletion(item),
-      onReopened: (item) => this.runtime.announceReopened(item)
+      onReopened: (item) => this.runtime.announceReopened(item),
+      getTimeStats: (period) => this.timeStats.get(period)
     });
     this.disposeProcessIpc = registerProcessIpc({
       ipcMain,
@@ -181,13 +197,14 @@ export class TaskSystem {
       processProvider: this.processProvider,
       isTrustedSender: (event) => this.isPanelSender(event),
       pickExecutable: () => this.pickWindowsExecutable(),
+      launchTask: (taskId) => this.launchBoundProgram(taskId),
       runtimeSnapshots: () => this.runtime.snapshots(),
       beforeRuleChange: (taskId) => this.stopExternalRuntime(taskId),
       onChanged: () => this.handleStoredDataChanged()
     });
     this.disposeSettingsIpc = registerSettingsIpc({
       ipcMain,
-      isTrustedSender: (event) => this.isPanelSender(event),
+      isTrustedSender: (event) => this.isSettingsSender(event),
       getSettings: () => this.options.settings.getSnapshot(),
       updateSettings: (input) => {
         const snapshot = this.options.settings.update(input);
@@ -199,7 +216,8 @@ export class TaskSystem {
       openGitHub: () => this.options.settings.openGitHub(),
       openLicenses: () => this.options.settings.openLicenses()
     });
-    ipcMain.on(TASK_CHANNELS.rendererReady, this.handleRendererReady);
+    ipcMain.handle(TASK_CHANNELS.rendererReady, this.handleRendererReady);
+    ipcMain.on(SETTINGS_CHANNELS.rendererReady, this.handleSettingsRendererReady);
     this.createPanelWindow();
     this.reconcileWatchTargets();
     this.scheduleMidnightRefresh();
@@ -224,8 +242,18 @@ export class TaskSystem {
     this.showPanelCommand("open-add-task", anchorBounds);
   }
 
-  showSettings(anchorBounds?: Rectangle | null): void {
-    this.showPanelCommand("open-settings", anchorBounds);
+  showSettings(): void {
+    if (!this.settingsWindow || this.settingsWindow.isDestroyed()) {
+      this.pendingSettingsShow = true;
+      this.createSettingsWindow();
+      return;
+    }
+    if (this.settingsWindow.webContents.isLoading()) {
+      this.pendingSettingsShow = true;
+      return;
+    }
+    this.settingsWindow.show();
+    this.settingsWindow.focus();
   }
 
   get monitoringPaused(): boolean {
@@ -280,7 +308,11 @@ export class TaskSystem {
     this.disposeProcessIpc = null;
     this.disposeSettingsIpc?.();
     this.disposeSettingsIpc = null;
-    ipcMain.removeListener(TASK_CHANNELS.rendererReady, this.handleRendererReady);
+    ipcMain.removeHandler(TASK_CHANNELS.rendererReady);
+    ipcMain.removeListener(
+      SETTINGS_CHANNELS.rendererReady,
+      this.handleSettingsRendererReady
+    );
 
     if (this.panelWindow && !this.panelWindow.isDestroyed()) {
       this.panelWindow.destroy();
@@ -288,6 +320,12 @@ export class TaskSystem {
     this.panelWindow = null;
     this.panelReady = false;
     this.pendingPanelCommand = null;
+
+    if (this.settingsWindow && !this.settingsWindow.isDestroyed()) {
+      this.settingsWindow.destroy();
+    }
+    this.settingsWindow = null;
+    this.pendingSettingsShow = false;
 
     if (this.database.open) this.database.close();
   }
@@ -362,6 +400,23 @@ export class TaskSystem {
     };
   }
 
+  private async launchBoundProgram(taskId: string): Promise<boolean> {
+    const rule = this.ruleService.listRulesForTask(taskId).find((candidate) => (
+      candidate.matchMode === "exact_path"
+      && typeof candidate.executablePath === "string"
+      && /\.exe$/i.test(candidate.executablePath)
+    ));
+    if (!rule?.executablePath || process.platform !== "win32") {
+      throw new TaskServiceError(
+        "CONFLICT",
+        "当前任务没有可启动的精确 exe 绑定，请重新选择程序文件"
+      );
+    }
+    const errorMessage = await shell.openPath(rule.executablePath);
+    if (errorMessage) throw new Error(errorMessage);
+    return true;
+  }
+
   private scheduleMidnightRefresh(): void {
     // 00:00 后刷新 daily occurrence 和 watch targets；100ms 偏移避免卡在边界前。
     if (this.midnightTimer) clearTimeout(this.midnightTimer);
@@ -412,6 +467,30 @@ export class TaskSystem {
     });
   }
 
+  private createSettingsWindow(): void {
+    const settingsWindow = new BrowserWindow(createSettingsWindowOptions({
+      preloadPath: this.options.settingsPreloadPath,
+      icon: this.options.icon
+    }));
+    this.settingsWindow = settingsWindow;
+    settingsWindow.loadFile(this.options.settingsHtmlPath);
+    settingsWindow.once("ready-to-show", () => {
+      if (!this.pendingSettingsShow || settingsWindow.isDestroyed()) return;
+      this.pendingSettingsShow = false;
+      settingsWindow.show();
+      settingsWindow.focus();
+    });
+    settingsWindow.webContents.on("did-fail-load", (_event, code, description) => {
+      console.error(`TaskPet settings window failed to load (${code}): ${description}`);
+    });
+    settingsWindow.on("closed", () => {
+      if (this.settingsWindow === settingsWindow) {
+        this.settingsWindow = null;
+        this.pendingSettingsShow = false;
+      }
+    });
+  }
+
   private flushPanelCommand(): void {
     if (
       !this.pendingPanelCommand
@@ -424,7 +503,7 @@ export class TaskSystem {
     }
     const command = this.pendingPanelCommand;
     this.pendingPanelCommand = null;
-    this.panelWindow.webContents.send(SETTINGS_CHANNELS.panelCommand, command);
+    this.panelWindow.webContents.send(TASK_CHANNELS.panelCommand, command);
   }
 
   private positionPanel(anchorBounds?: Rectangle | null): void {
@@ -461,6 +540,14 @@ export class TaskSystem {
     );
   }
 
+  private isSettingsSender(event: { sender: WebContents }): boolean {
+    return Boolean(
+      this.settingsWindow
+      && !this.settingsWindow.isDestroyed()
+      && event.sender === this.settingsWindow.webContents
+    );
+  }
+
   private broadcastChanged(): void {
     if (!this.panelWindow || this.panelWindow.isDestroyed()) return;
     this.panelWindow.webContents.send(TASK_CHANNELS.changed);
@@ -475,15 +562,15 @@ export class TaskSystem {
   }
 
   private broadcastSettings(snapshot: AppSettingsSnapshot): void {
-    if (!this.panelWindow || this.panelWindow.isDestroyed()) return;
-    this.panelWindow.webContents.send(SETTINGS_CHANNELS.changed, snapshot);
+    if (!this.settingsWindow || this.settingsWindow.isDestroyed()) return;
+    this.settingsWindow.webContents.send(SETTINGS_CHANNELS.changed, snapshot);
   }
 
   private readonly handleRendererReady = (
-    event: IpcMainEvent,
+    event: IpcMainInvokeEvent,
     payload: unknown
-  ): void => {
-    if (!this.isPanelSender(event)) return;
+  ): PanelCommand | null => {
+    if (!this.isPanelSender(event)) return null;
     const parsed = PanelReadyInputSchema.safeParse(payload);
     const ready = parsed.success && parsed.data.ok;
     this.panelReady = ready;
@@ -494,7 +581,19 @@ export class TaskSystem {
         this.panelWindow.show();
         this.panelWindow.focus();
       }
-      this.flushPanelCommand();
+      const command = this.pendingPanelCommand;
+      this.pendingPanelCommand = null;
+      return command;
     }
+    return null;
+  };
+
+  private readonly handleSettingsRendererReady = (
+    event: IpcMainEvent,
+    payload: unknown
+  ): void => {
+    if (!this.isSettingsSender(event)) return;
+    const parsed = PanelReadyInputSchema.safeParse(payload);
+    this.options.onSettingsReady?.(parsed.success && parsed.data.ok);
   };
 }

@@ -3,7 +3,10 @@
  * checkpoint 更新恢复点；finalize 只允许把尚未结束的 Session 收尾一次。
  */
 import type { TaskDatabase } from "./database";
-import type { ProcessSession } from "../../shared/process-types";
+import type {
+  ProcessSession,
+  TaskRuntimeInterval
+} from "../../shared/process-types";
 
 interface ProcessSessionRow {
   id: string;
@@ -94,6 +97,24 @@ export class ProcessSessionRepository {
       ORDER BY started_at, id
     `).all(occurrenceId) as ProcessSessionRow[];
     return rows.map(toProcessSession);
+  }
+
+  listFinalizedIntervals(from: string, to: string): TaskRuntimeInterval[] {
+    const rows = this.database.prepare(`
+      SELECT
+        s.task_id AS taskId,
+        t.title AS title,
+        s.started_at AS startedAt,
+        s.ended_at AS endedAt
+      FROM process_sessions s
+      JOIN tasks t ON t.id = s.task_id
+      WHERE s.finalized = 1
+        AND s.ended_at IS NOT NULL
+        AND s.started_at < ?
+        AND s.ended_at > ?
+      ORDER BY s.started_at, s.id
+    `).all(to, from) as TaskRuntimeInterval[];
+    return rows;
   }
 
   private require(id: string): ProcessSession {

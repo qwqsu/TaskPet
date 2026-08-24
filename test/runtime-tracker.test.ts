@@ -245,3 +245,41 @@ test("runtime lazily materializes a new daily occurrence at the start boundary",
     harness.close();
   }
 });
+
+test("process_start completes once without opening a timer or ProcessSession", () => {
+  const harness = createTaskHarness(date(9, 0, 0));
+  try {
+    const task = harness.service.createTask({
+      title: "打开 Anki",
+      taskType: "daily",
+      completionMode: "process_start",
+      targetDurationSec: 0
+    });
+    const item = harness.service.getTodayTasks()[0]!;
+    const events = new TaskEventBus();
+    const completed: TaskRuntimeEvent[] = [];
+    events.subscribe((event) => {
+      if (event.type === "TASK_COMPLETED") completed.push(event);
+    });
+    const scheduler = new FakeRuntimeScheduler();
+    const tracker = new RuntimeTracker(harness.database, events, { scheduler });
+
+    assert.equal(tracker.startTask(task.id, codexProcess, date(9, 0, 5)), true);
+    const after = harness.service.getTodayTasks()[0]!;
+    assert.equal(after.occurrence.id, item.occurrence.id);
+    assert.equal(after.occurrence.status, "completed");
+    assert.equal(after.occurrence.completionSource, "process_start");
+    assert.equal(after.occurrence.accumulatedSec, 0);
+    assert.equal(tracker.activeTaskCount, 0);
+    assert.equal(scheduler.intervals.size, 0);
+    assert.deepEqual(
+      new ProcessSessionRepository(harness.database).listForOccurrence(item.occurrence.id),
+      []
+    );
+    assert.equal(completed.length, 1);
+    assert.equal(tracker.startTask(task.id, codexProcess, date(9, 0, 10)), false);
+    assert.equal(completed.length, 1);
+  } finally {
+    harness.close();
+  }
+});

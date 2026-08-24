@@ -7,7 +7,7 @@ import { isLocalDateKey } from "./local-date";
 
 const titleSchema = z.string().trim().min(1, "任务标题不能为空").max(120, "任务标题不能超过 120 个字符");
 const descriptionSchema = z.string().trim().max(2000, "任务描述不能超过 2000 个字符").nullable();
-const p1CompletionModeSchema = z.enum(["manual", "duration"]);
+const taskCompletionModeSchema = z.enum(["manual", "duration", "process_start"]);
 const dateKeySchema = z.string().refine(isLocalDateKey, "日期必须是有效的 YYYY-MM-DD");
 const executableNameSchema = z.string()
   .trim()
@@ -22,7 +22,10 @@ const executablePathSchema = z.string()
   .refine((value) => /\.exe$/i.test(value), "只能绑定 Windows exe 文件");
 
 function validateDuration(
-  value: { completionMode: "manual" | "duration"; targetDurationSec: number },
+  value: {
+    completionMode: "manual" | "duration" | "process_start";
+    targetDurationSec: number;
+  },
   context: z.RefinementCtx
 ): void {
   // completionMode 与目标时长是跨字段约束，单个 number schema 无法独立表达。
@@ -34,11 +37,11 @@ function validateDuration(
     });
   }
 
-  if (value.completionMode === "manual" && value.targetDurationSec !== 0) {
+  if (value.completionMode !== "duration" && value.targetDurationSec !== 0) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
       path: ["targetDurationSec"],
-      message: "手动任务的目标时长必须为 0"
+      message: "非时长任务的目标时长必须为 0"
     });
   }
 }
@@ -47,7 +50,7 @@ export const CreateTaskInputSchema = z.object({
   title: titleSchema,
   description: descriptionSchema.optional().default(null),
   taskType: z.enum(["daily", "one_time"]),
-  completionMode: p1CompletionModeSchema,
+  completionMode: taskCompletionModeSchema,
   targetDurationSec: z.number().int().nonnegative(),
   sortOrder: z.number().int().optional()
 }).strict().superRefine(validateDuration);
@@ -55,7 +58,7 @@ export const CreateTaskInputSchema = z.object({
 export const UpdateTaskPatchSchema = z.object({
   title: titleSchema.optional(),
   description: descriptionSchema.optional(),
-  completionMode: p1CompletionModeSchema.optional(),
+  completionMode: taskCompletionModeSchema.optional(),
   targetDurationSec: z.number().int().nonnegative().optional(),
   sortOrder: z.number().int().optional()
 }).strict().refine((patch) => Object.keys(patch).length > 0, "至少需要修改一个字段");
@@ -80,6 +83,10 @@ export const HistoryQuerySchema = z.object({
   path: ["fromDate"],
   message: "开始日期不能晚于结束日期"
 });
+
+export const TimeStatsQuerySchema = z.object({
+  period: z.enum(["today", "week"])
+}).strict();
 
 export const EmptyTaskInputSchema = z.undefined();
 
@@ -109,4 +116,5 @@ export type UpdateTaskInput = z.input<typeof UpdateTaskInputSchema>;
 export type TaskIdInput = z.input<typeof TaskIdInputSchema>;
 export type OccurrenceIdInput = z.input<typeof OccurrenceIdInputSchema>;
 export type HistoryQuery = z.input<typeof HistoryQuerySchema>;
+export type TimeStatsQuery = z.input<typeof TimeStatsQuerySchema>;
 export type SetProcessRuleInput = z.input<typeof SetProcessRuleInputSchema>;

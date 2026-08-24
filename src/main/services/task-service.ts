@@ -107,9 +107,9 @@ export class TaskService {
     const nextCompletionMode = parsed.patch.completionMode ?? task.completionMode;
     let nextTargetDuration = parsed.patch.targetDurationSec ?? task.targetDurationSec;
 
-    if (nextCompletionMode === "manual") {
+    if (nextCompletionMode !== "duration") {
       if (parsed.patch.targetDurationSec !== undefined && parsed.patch.targetDurationSec !== 0) {
-        throw new TaskServiceError("CONFLICT", "手动任务的目标时长必须为 0");
+        throw new TaskServiceError("CONFLICT", "非时长任务的目标时长必须为 0");
       }
       nextTargetDuration = 0;
     } else if (nextCompletionMode === "duration" && nextTargetDuration <= 0) {

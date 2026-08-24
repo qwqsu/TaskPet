@@ -52,14 +52,10 @@ export class LoginItemService {
 
   get enabled(): boolean {
     if (!this.supported) return false;
-    const settings = this.app.getLoginItemSettings(this.comparisonOptions());
-    if (
-      this.platform === "win32"
-      && typeof settings.executableWillLaunchAtLogin === "boolean"
-    ) {
-      return settings.openAtLogin && settings.executableWillLaunchAtLogin;
-    }
-    return settings.openAtLogin;
+    // openAtLogin 表示当前 path/args 启动项是否已写入。Windows 的
+    // executableWillLaunchAtLogin 还受 StartupApproved 状态与读取时序影响，
+    // 不能把它当成设置保存是否成功的判据。
+    return this.app.getLoginItemSettings(this.comparisonOptions()).openAtLogin;
   }
 
   setEnabled(enabled: boolean): boolean {

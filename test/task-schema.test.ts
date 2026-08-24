@@ -53,4 +53,17 @@ test("task IPC schemas reject malformed and over-broad input", () => {
     executableName: "Codex.exe",
     executablePath: null
   }).success, true);
+
+  assert.equal(CreateTaskInputSchema.safeParse({
+    title: "打开 Anki",
+    taskType: "daily",
+    completionMode: "process_start",
+    targetDurationSec: 0
+  }).success, true);
+  assert.equal(CreateTaskInputSchema.safeParse({
+    title: "错误的启动任务",
+    taskType: "daily",
+    completionMode: "process_start",
+    targetDurationSec: 60
+  }).success, false);
 });

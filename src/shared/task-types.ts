@@ -10,7 +10,6 @@ export type TaskCompletionMode =
   | "process_start"
   | "process_exit";
 
-export type P1CompletionMode = Extract<TaskCompletionMode, "manual" | "duration">;
 export type OccurrenceStatus = "pending" | "active" | "completed";
 export type CompletionSource = TaskCompletionMode | null;
 
@@ -54,6 +53,22 @@ export interface HistoryEntry extends TaskListItem {
 export interface HistoryDay {
   date: string;
   entries: HistoryEntry[];
+}
+
+export type TimeStatsPeriod = "today" | "week";
+
+export interface TimeStatsEntry {
+  taskId: string;
+  title: string;
+  accumulatedSec: number;
+}
+
+export interface TimeStatsSnapshot {
+  period: TimeStatsPeriod;
+  from: string;
+  to: string;
+  totalSec: number;
+  entries: TimeStatsEntry[];
 }
 
 export interface OccurrenceMutationResult {

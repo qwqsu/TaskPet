@@ -1,0 +1,170 @@
+<!doctype html>
+<!-- TaskPet 独立设置窗口；系统能力只通过 settings-preload 的固定 IPC 调用。 -->
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TaskPet 设置</title>
+    <link rel="icon" type="image/png" href="../../assets/logo.png" />
+    <link rel="stylesheet" href="./settings.css" />
+  </head>
+  <body>
+    <main class="settings-shell">
+      <aside class="settings-sidebar" aria-label="设置分类">
+        <div class="brand">
+          <img src="../../assets/logo.png" alt="" />
+          <strong>TaskPet 设置</strong>
+        </div>
+        <nav class="section-nav">
+          <button class="nav-item active" type="button" data-target="generalSection">
+            <span aria-hidden="true">⚙</span>常规
+          </button>
+          <button class="nav-item" type="button" data-target="petSection">
+            <span aria-hidden="true">🐾</span>桌宠
+          </button>
+          <button class="nav-item" type="button" data-target="dataSection">
+            <span aria-hidden="true">◉</span>数据
+          </button>
+          <button class="nav-item" type="button" data-target="aboutSection">
+            <span aria-hidden="true">ⓘ</span>关于
+          </button>
+        </nav>
+        <div class="sidebar-pet" aria-hidden="true">
+          <span>🐾</span>
+          <img src="../../assets/logo.png" alt="" />
+        </div>
+      </aside>
+
+      <section class="settings-content">
+        <p id="settingsStatus" class="settings-status" role="status" aria-live="polite" hidden></p>
+
+        <section id="generalSection" class="settings-section" data-section="generalSection">
+          <h1>常规</h1>
+          <div class="settings-card single-row-card">
+            <div class="row-icon purple" aria-hidden="true">⏻</div>
+            <div class="row-copy">
+              <strong>开机自动启动</strong>
+              <small id="autoStartHint">进入 Windows 桌面后自动启动 TaskPet</small>
+            </div>
+            <label class="switch" aria-label="开机自动启动">
+              <input id="autoStartToggle" type="checkbox" />
+              <span></span>
+            </label>
+          </div>
+        </section>
+
+        <section id="petSection" class="settings-section" data-section="petSection">
+          <h1>桌宠</h1>
+          <div class="settings-card pet-card">
+            <label class="select-field">
+              <span>当前宠物</span>
+              <select id="petSelect" class="modern-select"></select>
+            </label>
+
+            <fieldset class="size-fieldset">
+              <legend>桌宠大小</legend>
+              <div class="size-presets">
+                <button class="size-option" type="button" data-pet-size="large" aria-pressed="false">
+                  <span class="pet-preview preview-large" aria-hidden="true">🐾</span>
+                  <span><strong>大</strong><small>105 × 114</small></span>
+                  <i aria-hidden="true"></i>
+                </button>
+                <button class="size-option" type="button" data-pet-size="normal" aria-pressed="false">
+                  <span class="pet-preview preview-normal" aria-hidden="true">🐾</span>
+                  <span><strong>正常</strong><small>96 × 104</small></span>
+                  <i aria-hidden="true"></i>
+                </button>
+                <button class="size-option" type="button" data-pet-size="small" aria-pressed="false">
+                  <span class="pet-preview preview-small" aria-hidden="true">🐾</span>
+                  <span><strong>小</strong><small>43 × 52</small></span>
+                  <i aria-hidden="true"></i>
+                </button>
+              </div>
+            </fieldset>
+
+            <div class="setting-divider"></div>
+            <div class="setting-row">
+              <div class="row-copy">
+                <strong>始终置顶</strong>
+                <small>桌宠窗口始终显示在其他窗口上方</small>
+              </div>
+              <label class="switch" aria-label="桌宠始终置顶">
+                <input id="alwaysOnTopToggle" type="checkbox" />
+                <span></span>
+              </label>
+            </div>
+
+            <div class="setting-divider"></div>
+            <div class="mouse-bindings">
+              <div>
+                <strong>鼠标按键绑定</strong>
+                <small>拖动桌宠不会触发点击动作；双击会覆盖本次单击。</small>
+              </div>
+              <div class="binding-grid">
+                <label class="select-field compact">
+                  <span>鼠标左键</span>
+                  <select id="leftClickAction" class="modern-select"></select>
+                </label>
+                <label class="select-field compact">
+                  <span>鼠标双击</span>
+                  <select id="doubleClickAction" class="modern-select"></select>
+                </label>
+                <label class="select-field compact">
+                  <span>鼠标右键</span>
+                  <select id="rightClickAction" class="modern-select"></select>
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="dataSection" class="settings-section" data-section="dataSection">
+          <h1>数据</h1>
+          <div class="settings-card action-list">
+            <button id="openDataDirectoryButton" class="action-row" type="button">
+              <span class="row-icon blue" aria-hidden="true">▱</span>
+              <span class="row-copy">
+                <strong>打开数据目录</strong>
+                <small id="dataDirectoryPath">正在读取…</small>
+              </span>
+              <span class="arrow" aria-hidden="true">›</span>
+            </button>
+            <button id="exportBackupButton" class="action-row" type="button">
+              <span class="row-icon green" aria-hidden="true">⇩</span>
+              <span class="row-copy">
+                <strong>导出备份</strong>
+                <small>导出 TaskPet 数据库到本地文件</small>
+              </span>
+              <span class="arrow" aria-hidden="true">›</span>
+            </button>
+          </div>
+        </section>
+
+        <section id="aboutSection" class="settings-section" data-section="aboutSection">
+          <h1>关于</h1>
+          <div class="settings-card about-card">
+            <div class="about-product">
+              <img src="../../assets/logo.png" alt="" />
+              <div>
+                <strong id="aboutAppName">TaskPet</strong>
+                <span id="aboutVersion" class="version-badge">—</span>
+                <small>一个陪伴你专注工作的任务完成桌宠</small>
+              </div>
+            </div>
+            <div class="about-actions">
+              <button id="openGitHubButton" type="button">GitHub 仓库</button>
+              <button id="openLicensesButton" type="button">第三方许可证</button>
+            </div>
+          </div>
+        </section>
+
+        <footer>© 2026 TaskPet contributors</footer>
+      </section>
+    </main>
+    <script src="../../../build/renderer/settings/settings.js"></script>
+  </body>
+</html>

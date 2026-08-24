@@ -39,23 +39,44 @@ test("pet renderer places a 13px task line above an emphasized 18px runtime", ()
   assert.equal(detailFontSize, "18px");
 });
 
-test("idle pet rotates cute text and yields immediately to real task state", () => {
+test("idle pet shows only kaomoji without the white rounded status frame", () => {
+  const html = fs.readFileSync(path.join(rendererRoot, "index.html"), "utf8");
   const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
+  const styles = fs.readFileSync(path.join(rendererRoot, "styles.css"), "utf8");
 
-  for (const idleMessage of ["ヾ(•ω•`)o", "(❁´◡`❁)", "(‾◡◝)"]) {
-    assert.ok(source.includes(idleMessage));
-  }
-  assert.match(source, /const IDLE_MESSAGE_INTERVAL_MS = 5_000/);
-  assert.match(
-    source,
-    /state === "idle" && message\.length === 0 && detail\.length === 0/
-  );
-  assert.match(source, /clearTimeout\(idleMessageTimer\)/);
-  assert.match(
-    source,
-    /setTimeout\(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS\)/
-  );
+  assert.match(html, /id="petStatus"[^>]*hidden/);
+  assert.match(styles, /\.pet-status\[hidden\]\s*\{[^}]*display:\s*none/s);
+  assert.match(styles, /\.pet-status\.idle-text\s*\{[^}]*border:\s*0/s);
+  assert.match(styles, /\.pet-status\.idle-text\s*\{[^}]*background:\s*transparent/s);
+  assert.match(styles, /\.pet-status\.idle-text\s*\{[^}]*box-shadow:\s*none/s);
+  assert.match(source, /renderPetStatus\(message, "", true\)/);
+  assert.match(source, /setTimeout\(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS\)/);
   assert.match(source, /updatePetStatus\(nextState, message, detail\)/);
+});
+
+test("pet visual presets use exact independent width and height scaling", () => {
+  const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
+  const styles = fs.readFileSync(path.join(rendererRoot, "styles.css"), "utf8");
+
+  assert.match(styles, /--pet-width:\s*96px/);
+  assert.match(styles, /--pet-height:\s*104px/);
+  assert.match(source, /DEFAULT_VISUAL_SIZE = Object\.freeze\(\{ width: 96, height: 104 \}\)/);
+  assert.match(source, /--pet-width", `\$\{visualSize\.width\}px`/);
+  assert.match(source, /--pet-height", `\$\{visualSize\.height\}px`/);
+  assert.match(source, /x: visualSize\.width \/ frame\.width/);
+  assert.match(source, /y: visualSize\.height \/ frame\.height/);
+});
+
+test("pet click, double click, and right click use fixed mouse-action IPC", () => {
+  const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
+  const preload = fs.readFileSync(path.join(__dirname, "..", "src", "preload.js"), "utf8");
+
+  assert.match(source, /performMouseAction\("left"\)/);
+  assert.match(source, /performMouseAction\("double"\)/);
+  assert.match(source, /performMouseAction\("right"\)/);
+  assert.match(source, /event\.preventDefault\(\)/);
+  assert.match(source, /event\.type === "pointerup" && dragStart\.moved/);
+  assert.match(preload, /taskpet:pet-mouse-action/);
 });
 
 test("renderer uses only the six TaskPet states", () => {

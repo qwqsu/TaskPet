@@ -347,6 +347,20 @@ export class TaskRepository {
     `).run(accumulatedSec, completedAt, completedAt, occurrenceId).changes === 1;
   }
 
+  completeProcessStartOccurrence(
+    occurrenceId: string,
+    completedAt: string
+  ): boolean {
+    return this.database.prepare(`
+      UPDATE task_occurrences
+      SET status = 'completed',
+          completed_at = ?,
+          completion_source = 'process_start',
+          updated_at = ?
+      WHERE id = ? AND status <> 'completed'
+    `).run(completedAt, completedAt, occurrenceId).changes === 1;
+  }
+
   resetActiveOccurrence(
     occurrenceId: string,
     accumulatedSec: number,

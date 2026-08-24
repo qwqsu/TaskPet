@@ -1,6 +1,6 @@
 /**
  * 任务面板的 sandboxed preload bridge。
- * 把 tasks/processes/runtime 三组最小 API 暴露给 Renderer，实际 SQLite 和系统调用仍留在 Main。
+ * 把 tasks/processes/runtime 三组最小 API 暴露给 Renderer，设置使用独立 preload。
  */
 import { contextBridge, ipcRenderer } from "electron";
 import type {
@@ -13,7 +13,8 @@ import type {
   OccurrenceMutationResult,
   Task,
   TaskApiResult,
-  TaskListItem
+  TaskListItem,
+  TimeStatsSnapshot
 } from "../shared/task-types";
 import type {
   RunningProgram,
@@ -21,25 +22,22 @@ import type {
   TaskProcessRule
 } from "../shared/process-types";
 import type { SetProcessRuleInput } from "../shared/task-schemas";
-import type {
-  AppSettingsSnapshot,
-  DataActionResult,
-  PanelCommand,
-  UpdateAppSettingsInput
-} from "../shared/app-settings";
+import type { PanelCommand } from "../shared/app-settings";
 
 // Sandboxed preloads can load Electron but cannot require arbitrary local modules.
 // Keep this closed channel list in sync with main/ipc/task-channels.ts.
 const TASK_CHANNELS = Object.freeze({
   listToday: "taskpet:tasks:list-today",
   history: "taskpet:tasks:history",
+  timeStats: "taskpet:tasks:time-stats",
   create: "taskpet:tasks:create",
   update: "taskpet:tasks:update",
   archive: "taskpet:tasks:archive",
   complete: "taskpet:tasks:complete",
   reopen: "taskpet:tasks:reopen",
   changed: "taskpet:tasks:changed",
-  rendererReady: "taskpet:tasks:renderer-ready"
+  rendererReady: "taskpet:tasks:renderer-ready",
+  panelCommand: "taskpet:panel:command"
 });
 
 const PROCESS_CHANNELS = Object.freeze({
@@ -48,19 +46,9 @@ const PROCESS_CHANNELS = Object.freeze({
   removeRules: "taskpet:process-rules:remove",
   listRunning: "taskpet:processes:list-running",
   pickExecutable: "taskpet:processes:pick-executable",
+  launchBound: "taskpet:processes:launch-bound",
   runtimeSnapshot: "taskpet:runtime:snapshot",
   runtimeChanged: "taskpet:runtime:changed"
-});
-
-const SETTINGS_CHANNELS = Object.freeze({
-  get: "taskpet:settings:get",
-  update: "taskpet:settings:update",
-  openDataDirectory: "taskpet:data:open-directory",
-  exportBackup: "taskpet:data:export-backup",
-  openGitHub: "taskpet:about:open-github",
-  openLicenses: "taskpet:about:open-licenses",
-  changed: "taskpet:settings:changed",
-  panelCommand: "taskpet:panel:command"
 });
 
 function subscribe(callback: () => void): () => void {
@@ -81,24 +69,13 @@ function subscribeRuntime(
   return () => ipcRenderer.removeListener(PROCESS_CHANNELS.runtimeChanged, listener);
 }
 
-function subscribeSettings(
-  callback: (snapshot: AppSettingsSnapshot) => void
-): () => void {
-  if (typeof callback !== "function") return () => {};
-  const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-    if (payload && typeof payload === "object") callback(payload as AppSettingsSnapshot);
-  };
-  ipcRenderer.on(SETTINGS_CHANNELS.changed, listener);
-  return () => ipcRenderer.removeListener(SETTINGS_CHANNELS.changed, listener);
-}
-
 function subscribePanelCommand(callback: (command: PanelCommand) => void): () => void {
   if (typeof callback !== "function") return () => {};
   const listener = (_event: Electron.IpcRendererEvent, payload: unknown): void => {
-    if (payload === "open-add-task" || payload === "open-settings") callback(payload);
+    if (payload === "open-add-task") callback(payload);
   };
-  ipcRenderer.on(SETTINGS_CHANNELS.panelCommand, listener);
-  return () => ipcRenderer.removeListener(SETTINGS_CHANNELS.panelCommand, listener);
+  ipcRenderer.on(TASK_CHANNELS.panelCommand, listener);
+  return () => ipcRenderer.removeListener(TASK_CHANNELS.panelCommand, listener);
 }
 
 const taskApi = Object.freeze({
@@ -107,6 +84,9 @@ const taskApi = Object.freeze({
   ),
   history: (query: HistoryQuery): Promise<TaskApiResult<HistoryDay[]>> => (
     ipcRenderer.invoke(TASK_CHANNELS.history, query)
+  ),
+  timeStats: (period: "today" | "week"): Promise<TaskApiResult<TimeStatsSnapshot>> => (
+    ipcRenderer.invoke(TASK_CHANNELS.timeStats, { period })
   ),
   create: (input: CreateTaskInput): Promise<TaskApiResult<Task>> => (
     ipcRenderer.invoke(TASK_CHANNELS.create, input)
@@ -123,9 +103,9 @@ const taskApi = Object.freeze({
   reopen: (occurrenceId: string): Promise<TaskApiResult<OccurrenceMutationResult>> => (
     ipcRenderer.invoke(TASK_CHANNELS.reopen, { occurrenceId })
   ),
-  rendererReady: (ok: boolean): void => {
-    ipcRenderer.send(TASK_CHANNELS.rendererReady, { ok: ok === true });
-  },
+  rendererReady: (ok: boolean): Promise<PanelCommand | null> => (
+    ipcRenderer.invoke(TASK_CHANNELS.rendererReady, { ok: ok === true })
+  ),
   onChanged: subscribe
 });
 
@@ -144,6 +124,9 @@ const processApi = Object.freeze({
   ),
   pickExecutable: (): Promise<TaskApiResult<RunningProgram | null>> => (
     ipcRenderer.invoke(PROCESS_CHANNELS.pickExecutable)
+  ),
+  launchBound: (taskId: string): Promise<TaskApiResult<boolean>> => (
+    ipcRenderer.invoke(PROCESS_CHANNELS.launchBound, { id: taskId })
   )
 });
 
@@ -155,28 +138,6 @@ const runtimeApi = Object.freeze({
   onChanged: subscribeRuntime
 });
 
-const settingsApi = Object.freeze({
-  get: (): Promise<TaskApiResult<AppSettingsSnapshot>> => (
-    ipcRenderer.invoke(SETTINGS_CHANNELS.get)
-  ),
-  update: (input: UpdateAppSettingsInput): Promise<TaskApiResult<AppSettingsSnapshot>> => (
-    ipcRenderer.invoke(SETTINGS_CHANNELS.update, input)
-  ),
-  openDataDirectory: (): Promise<TaskApiResult<DataActionResult>> => (
-    ipcRenderer.invoke(SETTINGS_CHANNELS.openDataDirectory)
-  ),
-  exportBackup: (): Promise<TaskApiResult<DataActionResult>> => (
-    ipcRenderer.invoke(SETTINGS_CHANNELS.exportBackup)
-  ),
-  openGitHub: (): Promise<TaskApiResult<void>> => (
-    ipcRenderer.invoke(SETTINGS_CHANNELS.openGitHub)
-  ),
-  openLicenses: (): Promise<TaskApiResult<void>> => (
-    ipcRenderer.invoke(SETTINGS_CHANNELS.openLicenses)
-  ),
-  onChanged: subscribeSettings
-});
-
 const uiApi = Object.freeze({
   onCommand: subscribePanelCommand
 });
@@ -185,6 +146,5 @@ contextBridge.exposeInMainWorld("taskPet", Object.freeze({
   tasks: taskApi,
   processes: processApi,
   runtime: runtimeApi,
-  settings: settingsApi,
   ui: uiApi
 }));

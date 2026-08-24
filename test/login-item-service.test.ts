@@ -11,6 +11,7 @@ class FakeLoginItemApp implements LoginItemAppAdapter {
   isPackaged = true;
   openAtLogin = false;
   executableWillLaunchAtLogin = false;
+  approvalUpdatesOnWrite = true;
   readonly reads: LoginItemSettingsOptions[] = [];
   readonly writes: LoginItemSettingsUpdate[] = [];
 
@@ -28,7 +29,9 @@ class FakeLoginItemApp implements LoginItemAppAdapter {
   setLoginItemSettings(settings: LoginItemSettingsUpdate): void {
     this.writes.push(settings);
     this.openAtLogin = settings.openAtLogin;
-    this.executableWillLaunchAtLogin = settings.enabled ?? settings.openAtLogin;
+    if (this.approvalUpdatesOnWrite) {
+      this.executableWillLaunchAtLogin = settings.enabled ?? settings.openAtLogin;
+    }
   }
 }
 
@@ -56,13 +59,15 @@ test("Windows login item reads and writes the same executable identity", () => {
   )));
 });
 
-test("Windows auto start reports a disabled StartupApproved entry as off", () => {
+test("Windows auto start uses the configured Run entry even while approval state is stale", () => {
   const app = new FakeLoginItemApp();
-  app.openAtLogin = true;
+  app.approvalUpdatesOnWrite = false;
   app.executableWillLaunchAtLogin = false;
   const service = new LoginItemService(app, { platform: "win32" });
 
-  assert.equal(service.enabled, false);
+  assert.equal(service.setEnabled(true), true);
+  assert.equal(app.executableWillLaunchAtLogin, false);
+  assert.equal(app.writes[0]?.enabled, true);
 });
 
 test("development Electron never registers itself as a login item", () => {

@@ -7,14 +7,16 @@
 }
 
 :root {
-  /* 这些默认值对应 zoom=1；renderer.js 会在缩放时写入同名变量。 */
-  --zoom: 1;
-  --pet-left: 36px;
-  --pet-top: 8px;
-  --pet-width: 168px;
-  --pet-height: 184px;
-  --sprite-left: 1px;
-  --status-top: 198px;
+  /* 默认值对应“正常”96×104；renderer.js 会按三档精确写入。 */
+  --zoom: 0.5;
+  --pet-left: 12px;
+  --pet-top: 0px;
+  --pet-width: 96px;
+  --pet-height: 104px;
+  --sprite-left: 0px;
+  --status-top: 109px;
+  --fallback-scale-x: 0.7619047619;
+  --fallback-scale-y: 0.6341463415;
 }
 
 html,
@@ -103,6 +105,20 @@ body {
   transform: translate(-50%, 0);
 }
 
+.pet-status[hidden] {
+  display: none;
+}
+
+/* 无任务时仍显示颜文字，但不绘制白色圆角状态框。 */
+.pet-status.idle-text {
+  width: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
 .pet-status-message {
   /* 任务名保持一行并省略；13px 弱化标题，让 18px 计时成为视觉重点。 */
   display: block;
@@ -114,6 +130,13 @@ body {
   line-height: 1.15;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.pet-status.idle-text .pet-status-message {
+  overflow: visible;
+  color: #263241;
+  font-size: 16px;
+  text-shadow: 0 1px 4px rgba(255, 255, 255, 0.95);
 }
 
 .pet-status-detail {
@@ -154,8 +177,8 @@ body {
   position: absolute;
   left: var(--sprite-left);
   bottom: 0;
-  width: 165px;
-  height: 179px;
+  width: var(--pet-width);
+  height: var(--pet-height);
   background-repeat: no-repeat;
   image-rendering: auto;
   opacity: 0;
@@ -168,13 +191,13 @@ body {
 /* 宠物资源不可用时的纯 CSS 机器人，确保窗口仍有可见反馈。 */
 .fallback {
   position: absolute;
-  left: 20px;
-  bottom: 2px;
+  left: 50%;
+  bottom: 0;
   width: 126px;
   height: 164px;
   opacity: 0;
   transform-origin: 50% 92%;
-  animation: fallback-idle 2.2s ease-in-out infinite;
+  transform: translateX(-50%) scale(var(--fallback-scale-x), var(--fallback-scale-y));
 }
 
 .fallback.show {
@@ -269,9 +292,4 @@ body {
 @keyframes work-bob {
   0%, 100% { transform: translateX(-2px) rotate(-1.5deg); }
   50% { transform: translateX(2px) rotate(1.5deg); }
-}
-
-@keyframes fallback-idle {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-5px); }
 }

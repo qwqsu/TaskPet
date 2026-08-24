@@ -55,6 +55,14 @@ export interface RuntimeTaskSnapshot {
   active: boolean;
 }
 
+// 统计页读取的任务运行区间；活动区间来自内存，不要求每秒写 SQLite。
+export interface TaskRuntimeInterval {
+  taskId: string;
+  title: string;
+  startedAt: string;
+  endedAt: string;
+}
+
 // 事件总线把运行时变化与具体 UI 解耦。
 export type TaskRuntimeEvent =
   | { type: "TASK_ACTIVE"; task: RuntimeTaskSnapshot }

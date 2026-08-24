@@ -27,6 +27,7 @@ export interface RegisterProcessIpcOptions {
   processProvider: ProcessProvider;
   isTrustedSender: (event: IpcMainInvokeEvent) => boolean;
   pickExecutable: () => Promise<RunningProgram | null>;
+  launchTask: (taskId: string) => Promise<boolean>;
   runtimeSnapshots: () => RuntimeTaskSnapshot[];
   beforeRuleChange: (taskId: string) => void;
   onChanged: () => void;
@@ -105,6 +106,10 @@ export function registerProcessIpc(options: RegisterProcessIpcOptions): () => vo
 
   handle(PROCESS_CHANNELS.pickExecutable, EmptyTaskInputSchema, () => {
     return options.pickExecutable();
+  });
+
+  handle(PROCESS_CHANNELS.launchBound, TaskIdInputSchema, ({ id }) => {
+    return options.launchTask(id);
   });
 
   handle(PROCESS_CHANNELS.runtimeSnapshot, EmptyTaskInputSchema, () => {

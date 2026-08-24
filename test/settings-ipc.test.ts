@@ -24,6 +24,11 @@ const snapshot: AppSettingsSnapshot = {
   autoStartSupported: true,
   petSize: "normal",
   alwaysOnTop: true,
+  mouseBindings: {
+    leftClick: "open-panel",
+    doubleClick: "toggle-monitoring",
+    rightClick: "open-settings"
+  },
   activePetKey: "builtin:xiao-jin",
   pets: [{ key: "builtin:xiao-jin", displayName: "小锦", sourceLabel: "内置" }],
   dataDirectory: "C:\\Users\\Test\\AppData\\Roaming\\TaskPet",

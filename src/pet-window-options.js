@@ -4,7 +4,9 @@
  */
 const BASE_WINDOW_WIDTH = 240;
 const BASE_WINDOW_HEIGHT = 286;
-const MIN_ZOOM = 0.5;
+const MIN_WINDOW_WIDTH = 120;
+const MIN_WINDOW_HEIGHT = 110;
+const MIN_ZOOM = 0.25;
 const MAX_ZOOM = 2.4;
 const MIN_VISIBLE_EDGE = 48;
 const WINDOW_EDGE_MARGIN = 24;
@@ -23,8 +25,8 @@ function finiteCoordinate(value, fallback) {
 function getPetWindowSize(zoomInput) {
   const zoom = clampZoom(zoomInput);
   return {
-    width: Math.round(BASE_WINDOW_WIDTH * zoom),
-    height: Math.round(BASE_WINDOW_HEIGHT * zoom)
+    width: Math.max(MIN_WINDOW_WIDTH, Math.round(BASE_WINDOW_WIDTH * zoom)),
+    height: Math.max(MIN_WINDOW_HEIGHT, Math.round(BASE_WINDOW_HEIGHT * zoom))
   };
 }
 
@@ -140,6 +142,8 @@ function createPetWindowOptions(options = {}) {
 module.exports = {
   BASE_WINDOW_HEIGHT,
   BASE_WINDOW_WIDTH,
+  MIN_WINDOW_HEIGHT,
+  MIN_WINDOW_WIDTH,
   MAX_ZOOM,
   MIN_ZOOM,
   clampZoom,

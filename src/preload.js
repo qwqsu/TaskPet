@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld("taskPet", {
   moveWindow: () => ipcRenderer.send("taskpet:move-window"),
   finishDrag: () => ipcRenderer.invoke("taskpet:finish-drag"),
   toggleTaskPanel: () => ipcRenderer.invoke("taskpet:toggle-task-panel"),
+  performMouseAction: (gesture) => ipcRenderer.invoke("taskpet:pet-mouse-action", gesture),
   setDragDirection: (direction) => ipcRenderer.send("taskpet:drag-direction", direction),
   rendererReady: () => ipcRenderer.send("taskpet:renderer-ready"),
   onStateChange: (callback) => subscribe("taskpet:state-changed", callback),

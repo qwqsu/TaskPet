@@ -25,8 +25,12 @@ const {
 } = require("./pet-window-options");
 const { createFileLogger } = require("./app-logger");
 const {
+  DEFAULT_PET_MOUSE_BINDINGS,
+  PET_VISUAL_SIZES,
   PET_SIZE_ZOOMS,
-  normalizePetSize
+  normalizePetMouseBindings,
+  normalizePetSize,
+  petMouseActionForGesture
 } = require("../build/shared/app-settings");
 const { LoginItemService } = require("../build/main/services/login-item-service");
 const { createTrayMenuTemplate } = require("../build/main/windows/tray-menu");
@@ -53,7 +57,7 @@ let taskSystem = null;
 let petDragSession = null;
 let loginItemService = null;
 let logger = null;
-const smokeReady = { pet: false, panel: false };
+const smokeReady = { pet: false, panel: false, settings: false };
 
 const petState = new PetStateController({
   onChange: (state) => broadcastPetState(state)
@@ -69,10 +73,10 @@ function markSmokeReady(component, ready = true) {
   }
 
   smokeReady[component] = true;
-  if (!smokeReady.pet || !smokeReady.panel) return;
+  if (!smokeReady.pet || !smokeReady.panel || !smokeReady.settings) return;
   clearTimeout(smokeTimeout);
   smokeTimeout = null;
-  console.log("TaskPet smoke test ready (pet + task panel + SQLite)");
+  console.log("TaskPet smoke test ready (pet + task panel + settings + SQLite)");
   setTimeout(() => app.quit(), 100);
 }
 
@@ -142,7 +146,8 @@ function loadSettings() {
     ...raw,
     petSize,
     zoom: PET_SIZE_ZOOMS[petSize],
-    alwaysOnTop: raw.alwaysOnTop !== false
+    alwaysOnTop: raw.alwaysOnTop !== false,
+    mouseBindings: normalizePetMouseBindings(raw.mouseBindings)
   };
 }
 
@@ -223,6 +228,8 @@ function broadcastPet() {
 
 function broadcastZoom() {
   sendToPetWindow("taskpet:zoom-changed", {
+    petSize: settings.petSize,
+    visualSize: PET_VISUAL_SIZES[settings.petSize],
     zoom: clampZoom(settings.zoom),
     bounds: petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null
   });
@@ -290,6 +297,7 @@ function appSettingsSnapshot() {
     autoStartSupported: loginItemService?.supported ?? false,
     petSize: settings.petSize,
     alwaysOnTop: settings.alwaysOnTop !== false,
+    mouseBindings: { ...settings.mouseBindings },
     activePetKey: activePet?.key ?? null,
     pets: pets.map((pet) => ({
       key: pet.key,
@@ -327,6 +335,11 @@ function applyAppSettings(input) {
     if (petWindow && !petWindow.isDestroyed()) {
       petWindow.setAlwaysOnTop(input.alwaysOnTop, "floating");
     }
+    persistSettings = true;
+  }
+
+  if (input.mouseBindings !== undefined) {
+    settings.mouseBindings = normalizePetMouseBindings(input.mouseBindings);
     persistSettings = true;
   }
 
@@ -420,6 +433,34 @@ function recallPetWindow() {
   return true;
 }
 
+function performPetMouseAction(action) {
+  switch (action) {
+    case "open-panel":
+      taskSystem?.togglePanel(petWindowBounds());
+      break;
+    case "quick-add":
+      taskSystem?.showQuickAdd(petWindowBounds());
+      break;
+    case "open-settings":
+      taskSystem?.showSettings();
+      break;
+    case "toggle-monitoring":
+      if (taskSystem) taskSystem.setMonitoringPaused(!taskSystem.monitoringPaused);
+      break;
+    case "recall-pet":
+      recallPetWindow();
+      break;
+    case "quit":
+      app.quit();
+      break;
+    case "none":
+      break;
+    default:
+      return false;
+  }
+  return true;
+}
+
 // ---------- 系统托盘 ----------
 
 function petTrayItems() {
@@ -464,7 +505,7 @@ function buildTrayMenu() {
         rebuildTrayMenu();
       }
     },
-    openSettings: () => taskSystem?.showSettings(petWindowBounds()),
+    openSettings: () => taskSystem?.showSettings(),
     quit: () => app.quit()
   }, petTrayItems());
   return Menu.buildFromTemplate(template);
@@ -492,6 +533,8 @@ function registerIpcHandlers() {
   ipcMain.handle("taskpet:get-initial-state", (event) => isPetWindowSender(event) ? ({
     ...petStatePayload(),
     config: {
+      petSize: settings.petSize,
+      visualSize: PET_VISUAL_SIZES[settings.petSize],
       zoom: clampZoom(settings.zoom),
       minZoom: MIN_ZOOM,
       maxZoom: MAX_ZOOM,
@@ -524,6 +567,13 @@ function registerIpcHandlers() {
     if (!isPetWindowSender(event) || !taskSystem) return false;
     taskSystem.togglePanel(petWindowBounds());
     return true;
+  });
+
+  ipcMain.handle("taskpet:pet-mouse-action", (event, gesture) => {
+    if (!isPetWindowSender(event)) return false;
+    const bindings = settings.mouseBindings || DEFAULT_PET_MOUSE_BINDINGS;
+    const action = petMouseActionForGesture(bindings, gesture);
+    return action ? performPetMouseAction(action) : false;
   });
 
   ipcMain.on("taskpet:drag-direction", (event, direction) => {
@@ -572,9 +622,12 @@ app.whenReady().then(() => {
     backupDirectory: dataPaths.backupDirectory,
     panelPreloadPath: path.join(__dirname, "..", "build", "preload", "panel-preload.js"),
     panelHtmlPath: path.join(__dirname, "renderer", "panel", "index.html"),
+    settingsPreloadPath: path.join(__dirname, "..", "build", "preload", "settings-preload.js"),
+    settingsHtmlPath: path.join(__dirname, "renderer", "settings", "index.html"),
     icon: createAppIcon(),
     onPetState: (state, message, detail) => petState.setState(state, { message, detail }),
     onPanelReady: (ready) => markSmokeReady("panel", ready),
+    onSettingsReady: (ready) => markSmokeReady("settings", ready),
     onMonitoringStateChanged: () => rebuildTrayMenu(),
     settings: {
       getSnapshot: () => appSettingsSnapshot(),
@@ -585,6 +638,7 @@ app.whenReady().then(() => {
     logger
   });
   taskSystem.initialize();
+  if (IS_SMOKE_TEST) taskSystem.showSettings();
   createTray();
   if (IS_SMOKE_TEST) {
     smokeTimeout = setTimeout(() => {

@@ -1,4 +1,4 @@
-/** P4 设置、数据动作和 Main → Panel 固定命令频道。 */
+/** 独立设置窗口的数据、备份和关于频道。 */
 export const SETTINGS_CHANNELS = Object.freeze({
   get: "taskpet:settings:get",
   update: "taskpet:settings:update",
@@ -7,6 +7,5 @@ export const SETTINGS_CHANNELS = Object.freeze({
   openGitHub: "taskpet:about:open-github",
   openLicenses: "taskpet:about:open-licenses",
   changed: "taskpet:settings:changed",
-  panelCommand: "taskpet:panel:command"
+  rendererReady: "taskpet:settings:renderer-ready"
 });
-

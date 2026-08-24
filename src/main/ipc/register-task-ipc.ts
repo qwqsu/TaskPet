@@ -10,9 +10,15 @@ import {
   HistoryQuerySchema,
   OccurrenceIdInputSchema,
   TaskIdInputSchema,
+  TimeStatsQuerySchema,
   UpdateTaskInputSchema
 } from "../../shared/task-schemas";
-import type { TaskApiResult, TaskListItem } from "../../shared/task-types";
+import type {
+  TaskApiResult,
+  TaskListItem,
+  TimeStatsPeriod,
+  TimeStatsSnapshot
+} from "../../shared/task-types";
 import { TaskService, TaskServiceError } from "../services/task-service";
 import { TASK_CHANNELS } from "./task-channels";
 
@@ -26,6 +32,7 @@ export interface RegisterTaskIpcOptions {
   beforeOccurrenceComplete: (occurrenceId: string) => void;
   onCompleted: (item: TaskListItem) => void;
   onReopened: (item: TaskListItem) => void;
+  getTimeStats: (period: TimeStatsPeriod) => TimeStatsSnapshot;
 }
 
 function success<T>(data: T): TaskApiResult<T> {
@@ -85,6 +92,10 @@ export function registerTaskIpc(options: RegisterTaskIpcOptions): () => void {
 
   handle(TASK_CHANNELS.history, HistoryQuerySchema, (query) => {
     return options.service.getHistory(query);
+  });
+
+  handle(TASK_CHANNELS.timeStats, TimeStatsQuerySchema, ({ period }) => {
+    return options.getTimeStats(period);
   });
 
   handle(TASK_CHANNELS.create, CreateTaskInputSchema, (input) => {

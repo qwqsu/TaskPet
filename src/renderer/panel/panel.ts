@@ -6,9 +6,9 @@ type TaskType = "daily" | "one_time";
 type CompletionMode = "manual" | "duration" | "process_start" | "process_exit";
 type OccurrenceStatus = "pending" | "active" | "completed";
 type ProcessMatchMode = "exact_path" | "process_name";
-type PetSize = "large" | "normal" | "small";
-type PanelView = "today" | "history" | "settings";
-type PanelCommand = "open-add-task" | "open-settings";
+type PanelView = "today" | "history" | "stats";
+type PanelCommand = "open-add-task";
+type TimeStatsPeriod = "today" | "week";
 
 interface Task {
   id: string;
@@ -68,22 +68,16 @@ interface RuntimeTaskSnapshot {
   active: boolean;
 }
 
-interface AppSettingsSnapshot {
-  autoStart: boolean;
-  autoStartSupported: boolean;
-  petSize: PetSize;
-  alwaysOnTop: boolean;
-  activePetKey: string | null;
-  pets: Array<{ key: string; displayName: string; sourceLabel: string }>;
-  dataDirectory: string;
-  appName: string;
-  version: string;
-  githubUrl: string;
-}
-
-interface DataActionResult {
-  canceled: boolean;
-  filePath: string | null;
+interface TimeStatsSnapshot {
+  period: TimeStatsPeriod;
+  from: string;
+  to: string;
+  totalSec: number;
+  entries: Array<{
+    taskId: string;
+    title: string;
+    accumulatedSec: number;
+  }>;
 }
 
 type ApiResult<T> =
@@ -93,23 +87,24 @@ type ApiResult<T> =
 interface TaskBridge {
   listToday(): Promise<ApiResult<TaskListItem[]>>;
   history(query: { fromDate: string; toDate: string }): Promise<ApiResult<HistoryDay[]>>;
+  timeStats(period: TimeStatsPeriod): Promise<ApiResult<TimeStatsSnapshot>>;
   create(input: {
     title: string;
     description: string | null;
     taskType: TaskType;
-    completionMode: "manual" | "duration";
+    completionMode: "manual" | "duration" | "process_start";
     targetDurationSec: number;
   }): Promise<ApiResult<Task>>;
   update(id: string, patch: {
     title: string;
     description: string | null;
-    completionMode: "manual" | "duration";
+    completionMode: "manual" | "duration" | "process_start";
     targetDurationSec: number;
   }): Promise<ApiResult<Task>>;
   archive(id: string): Promise<ApiResult<Task>>;
   complete(occurrenceId: string): Promise<ApiResult<unknown>>;
   reopen(occurrenceId: string): Promise<ApiResult<unknown>>;
-  rendererReady(ok: boolean): void;
+  rendererReady(ok: boolean): Promise<PanelCommand | null>;
   onChanged(callback: () => void): () => void;
 }
 
@@ -124,26 +119,12 @@ interface ProcessBridge {
   removeRules(taskId: string): Promise<ApiResult<boolean>>;
   listRunning(): Promise<ApiResult<RunningProgram[]>>;
   pickExecutable(): Promise<ApiResult<RunningProgram | null>>;
+  launchBound(taskId: string): Promise<ApiResult<boolean>>;
 }
 
 interface RuntimeBridge {
   snapshot(): Promise<ApiResult<RuntimeTaskSnapshot[]>>;
   onChanged(callback: (snapshots: RuntimeTaskSnapshot[]) => void): () => void;
-}
-
-interface SettingsBridge {
-  get(): Promise<ApiResult<AppSettingsSnapshot>>;
-  update(input: {
-    autoStart?: boolean;
-    petSize?: PetSize;
-    alwaysOnTop?: boolean;
-    activePetKey?: string;
-  }): Promise<ApiResult<AppSettingsSnapshot>>;
-  openDataDirectory(): Promise<ApiResult<DataActionResult>>;
-  exportBackup(): Promise<ApiResult<DataActionResult>>;
-  openGitHub(): Promise<ApiResult<void>>;
-  openLicenses(): Promise<ApiResult<void>>;
-  onChanged(callback: (snapshot: AppSettingsSnapshot) => void): () => void;
 }
 
 interface UiBridge {
@@ -155,7 +136,6 @@ interface TaskPetPanelWindow extends Window {
     tasks: TaskBridge;
     processes: ProcessBridge;
     runtime: RuntimeBridge;
-    settings: SettingsBridge;
     ui: UiBridge;
   };
 }
@@ -208,16 +188,18 @@ const panelWindow = window as unknown as TaskPetPanelWindow;
 const taskApi = panelWindow.taskPet.tasks;
 const processApi = panelWindow.taskPet.processes;
 const runtimeApi = panelWindow.taskPet.runtime;
-const settingsApi = panelWindow.taskPet.settings;
 const uiApi = panelWindow.taskPet.ui;
 const pageTitle = elementById<HTMLHeadingElement>("pageTitle");
 const todaySummary = elementById<HTMLParagraphElement>("todaySummary");
 const statusMessage = elementById<HTMLParagraphElement>("statusMessage");
 const todayView = elementById<HTMLElement>("todayView");
 const historyView = elementById<HTMLElement>("historyView");
-const settingsView = elementById<HTMLElement>("settingsView");
+const statsView = elementById<HTMLElement>("statsView");
 const todayList = elementById<HTMLDivElement>("todayList");
 const historyList = elementById<HTMLDivElement>("historyList");
+const statsList = elementById<HTMLDivElement>("statsList");
+const statsTotal = elementById<HTMLElement>("statsTotal");
+const statsRange = elementById<HTMLElement>("statsRange");
 const addTaskButton = elementById<HTMLButtonElement>("addTaskButton");
 const taskDialog = elementById<HTMLDialogElement>("taskDialog");
 const taskForm = elementById<HTMLFormElement>("taskForm");
@@ -240,20 +222,16 @@ const chooseRunningButton = elementById<HTMLButtonElement>("chooseRunningButton"
 const chooseExeButton = elementById<HTMLButtonElement>("chooseExeButton");
 const runningProgramPicker = elementById<HTMLElement>("runningProgramPicker");
 const runningProgramList = elementById<HTMLDivElement>("runningProgramList");
-const autoStartToggle = elementById<HTMLInputElement>("autoStartToggle");
-const autoStartHint = elementById<HTMLElement>("autoStartHint");
-const petSelect = elementById<HTMLSelectElement>("petSelect");
-const alwaysOnTopToggle = elementById<HTMLInputElement>("alwaysOnTopToggle");
-const dataDirectoryPath = elementById<HTMLElement>("dataDirectoryPath");
-const aboutAppName = elementById<HTMLElement>("aboutAppName");
-const aboutVersion = elementById<HTMLElement>("aboutVersion");
+const runningProgramSearch = elementById<HTMLInputElement>("runningProgramSearch");
 
 let currentView: PanelView = "today";
 let todayItems = new Map<string, TaskListItem>();
 let rulesByTask = new Map<string, TaskProcessRule[]>();
 let runtimeByOccurrence = new Map<string, RuntimeTaskSnapshot>();
 let selectedProgram: RunningProgram | null = null;
-let currentSettings: AppSettingsSnapshot | null = null;
+let runningPrograms: RunningProgram[] = [];
+let statsPeriod: TimeStatsPeriod = "today";
+let statsRefreshTimer: number | null = null;
 
 // ---------- 今日任务与历史渲染 ----------
 
@@ -269,6 +247,8 @@ function taskMeta(item: TaskListItem): string {
   if (runtime?.active) pieces.push("执行中");
   if (item.task.completionMode === "duration") {
     pieces.push(`目标 ${formatDuration(item.task.targetDurationSec)}`);
+  } else if (item.task.completionMode === "process_start") {
+    pieces.push("启动即完成");
   } else {
     pieces.push("手动完成");
   }
@@ -287,6 +267,11 @@ function emptyState(title: string, detail: string): HTMLElement {
   body.textContent = detail;
   container.append(heading, body);
   return container;
+}
+
+function formatStatsBoundary(value: Date): string {
+  const twoDigits = (part: number): string => String(part).padStart(2, "0");
+  return `${value.getMonth() + 1}/${value.getDate()} ${twoDigits(value.getHours())}:${twoDigits(value.getMinutes())}`;
 }
 
 function renderToday(items: TaskListItem[]): void {
@@ -337,12 +322,17 @@ function renderToday(items: TaskListItem[]): void {
     meta.textContent = taskMeta(item);
     content.append(title, meta);
 
-    const editMark = document.createElement("span");
-    editMark.className = "edit-mark";
-    editMark.textContent = "›";
-    editMark.setAttribute("aria-hidden", "true");
-
-    card.append(checkbox, content, editMark);
+    card.append(checkbox, content);
+    const rule = rulesByTask.get(item.task.id)?.[0];
+    if (rule?.matchMode === "exact_path" && rule.executablePath) {
+      const launch = document.createElement("button");
+      launch.className = "launch-button";
+      launch.type = "button";
+      launch.textContent = "启动";
+      launch.title = `启动 ${rule.executableName ?? item.task.title}`;
+      launch.addEventListener("click", () => void launchBoundTask(item));
+      card.append(launch);
+    }
     fragment.append(card);
   }
   todayList.replaceChildren(fragment);
@@ -402,37 +392,38 @@ function renderHistory(days: HistoryDay[]): void {
   historyList.replaceChildren(fragment);
 }
 
-function renderSettings(snapshot: AppSettingsSnapshot): void {
-  currentSettings = snapshot;
-  todaySummary.textContent = "本地设置会立即生效";
-  autoStartToggle.checked = snapshot.autoStart;
-  autoStartToggle.disabled = !snapshot.autoStartSupported;
-  autoStartHint.textContent = snapshot.autoStartSupported
-    ? "登录 Windows 后启动 TaskPet"
-    : "开机启动仅在 TaskPet 安装版中可用";
-  alwaysOnTopToggle.checked = snapshot.alwaysOnTop;
+function renderTimeStats(snapshot: TimeStatsSnapshot): void {
+  todaySummary.textContent = snapshot.entries.length === 0
+    ? "还没有记录到任务运行时间"
+    : `${snapshot.entries.length} 项任务 · 按实际累计时长排序`;
+  statsTotal.textContent = formatDuration(snapshot.totalSec);
+  const from = new Date(snapshot.from);
+  const to = new Date(snapshot.to);
+  statsRange.textContent = `${formatStatsBoundary(from)} 至 ${formatStatsBoundary(to)} · 实际运行时间`;
 
-  const options = snapshot.pets.map((pet) => {
-    const option = document.createElement("option");
-    option.value = pet.key;
-    option.textContent = `${pet.displayName} · ${pet.sourceLabel}`;
-    return option;
-  });
-  petSelect.replaceChildren(...options);
-  petSelect.disabled = options.length === 0;
-  if (snapshot.activePetKey) petSelect.value = snapshot.activePetKey;
-
-  for (const button of document.querySelectorAll<HTMLButtonElement>("[data-pet-size]")) {
-    const active = button.dataset.petSize === snapshot.petSize;
-    button.classList.toggle("active", active);
-    button.setAttribute("aria-pressed", String(active));
+  if (snapshot.entries.length === 0) {
+    statsList.replaceChildren(emptyState(
+      snapshot.period === "today" ? "今天还没有计时" : "本周还没有计时",
+      "运行任务绑定的程序后，实际累计时间会显示在这里。"
+    ));
+    return;
   }
 
-  dataDirectoryPath.textContent = snapshot.dataDirectory;
-  dataDirectoryPath.title = snapshot.dataDirectory;
-  aboutAppName.textContent = snapshot.appName;
-  aboutVersion.textContent = snapshot.version;
-  elementById<HTMLButtonElement>("openGitHubButton").title = snapshot.githubUrl;
+  statsList.replaceChildren(...snapshot.entries.map((entry, index) => {
+    const row = document.createElement("article");
+    row.className = "stats-entry";
+    const rank = document.createElement("span");
+    rank.className = "stats-rank";
+    rank.textContent = String(index + 1);
+    const title = document.createElement("strong");
+    title.className = "stats-title";
+    title.textContent = entry.title;
+    const duration = document.createElement("span");
+    duration.className = "stats-duration";
+    duration.textContent = formatDuration(entry.accumulatedSec);
+    row.append(rank, title, duration);
+    return row;
+  }));
 }
 
 // ---------- 从 Main Process 刷新数据 ----------
@@ -472,38 +463,9 @@ async function refreshHistory(): Promise<void> {
   })));
 }
 
-async function refreshSettings(): Promise<void> {
+async function refreshStats(): Promise<void> {
   setStatus();
-  renderSettings(unwrap(await settingsApi.get()));
-}
-
-async function updateSetting(input: Parameters<SettingsBridge["update"]>[0]): Promise<void> {
-  try {
-    setStatus();
-    renderSettings(unwrap(await settingsApi.update(input)));
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : "无法更新设置");
-    if (currentSettings) renderSettings(currentSettings);
-  }
-}
-
-async function openDataDirectory(): Promise<void> {
-  try {
-    setStatus();
-    unwrap(await settingsApi.openDataDirectory());
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : "无法打开数据目录");
-  }
-}
-
-async function exportBackup(): Promise<void> {
-  try {
-    setStatus();
-    const result = unwrap(await settingsApi.exportBackup());
-    if (!result.canceled && result.filePath) setStatus(`备份已导出：${result.filePath}`);
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : "无法导出备份");
-  }
+  renderTimeStats(unwrap(await taskApi.timeStats(statsPeriod)));
 }
 
 async function changeCompletion(item: TaskListItem, complete: boolean): Promise<void> {
@@ -515,6 +477,16 @@ async function changeCompletion(item: TaskListItem, complete: boolean): Promise<
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "无法修改任务状态");
     await refreshToday().catch(() => undefined);
+  }
+}
+
+async function launchBoundTask(item: TaskListItem): Promise<void> {
+  try {
+    setStatus();
+    unwrap(await processApi.launchBound(item.task.id));
+    setStatus(`已启动：${item.task.title}`);
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : "无法启动绑定程序");
   }
 }
 
@@ -555,10 +527,20 @@ function selectProgram(program: RunningProgram): void {
   syncProgramBinding();
 }
 
-function renderRunningPrograms(programs: RunningProgram[]): void {
+function renderRunningPrograms(): void {
+  const query = runningProgramSearch.value.trim().toLocaleLowerCase("zh-CN");
+  const programs = query.length === 0
+    ? runningPrograms
+    : runningPrograms.filter((program) => (
+      program.executableName.toLocaleLowerCase("zh-CN").includes(query)
+      || (program.executablePath ?? "").toLocaleLowerCase("zh-CN").includes(query)
+    ));
   if (programs.length === 0) {
     runningProgramList.replaceChildren(
-      emptyState("没有可选择的程序", "请先启动目标程序，或改用 exe 文件选择。")
+      emptyState(
+        query ? "没有匹配的程序" : "没有可选择的程序",
+        query ? "换一个 exe 名称或路径关键词试试。" : "请先启动目标程序，或改用 exe 文件选择。"
+      )
     );
     return;
   }
@@ -584,7 +566,9 @@ async function chooseRunningProgram(): Promise<void> {
   try {
     runningProgramPicker.classList.remove("hidden");
     runningProgramList.replaceChildren(emptyState("正在读取", "只读取当前快照，不保存无关进程。"));
-    renderRunningPrograms(unwrap(await processApi.listRunning()));
+    runningProgramSearch.value = "";
+    runningPrograms = unwrap(await processApi.listRunning());
+    renderRunningPrograms();
   } catch (error) {
     runningProgramPicker.classList.add("hidden");
     setStatus(error instanceof Error ? error.message : "无法读取当前程序");
@@ -605,6 +589,8 @@ function openTaskDialog(item?: TaskListItem): void {
   taskForm.reset();
   setStatus();
   runningProgramPicker.classList.add("hidden");
+  runningProgramSearch.value = "";
+  runningPrograms = [];
   const isEdit = Boolean(item);
   dialogTitle.textContent = isEdit ? "编辑任务" : "添加任务";
   editingTaskId.value = item?.task.id ?? "";
@@ -613,7 +599,11 @@ function openTaskDialog(item?: TaskListItem): void {
   taskType.value = item?.task.taskType ?? "daily";
   taskType.disabled = isEdit;
   taskTypeHint.classList.toggle("hidden", !isEdit);
-  completionMode.value = item?.task.completionMode === "manual" ? "manual" : "duration";
+  completionMode.value = item?.task.completionMode === "manual"
+    ? "manual"
+    : item?.task.completionMode === "process_start"
+      ? "process_start"
+      : "duration";
   targetMinutes.value = item?.task.targetDurationSec
     ? String(Math.max(1, Math.ceil(item.task.targetDurationSec / 60)))
     : "25";
@@ -655,12 +645,18 @@ async function saveProgramBinding(taskId: string): Promise<void> {
 
 async function saveTask(event: SubmitEvent): Promise<void> {
   event.preventDefault();
-  const mode: "manual" | "duration" = completionMode.value === "manual"
+  const mode: "manual" | "duration" | "process_start" = completionMode.value === "manual"
     ? "manual"
-    : "duration";
+    : completionMode.value === "process_start"
+      ? "process_start"
+      : "duration";
   const minutes = mode === "duration" ? Number(targetMinutes.value) : 0;
   if (mode === "duration" && (!Number.isInteger(minutes) || minutes <= 0)) {
     setStatus("目标分钟数必须是大于 0 的整数");
+    return;
+  }
+  if (mode === "process_start" && !selectedProgram) {
+    setStatus("“启动即完成”必须先绑定一个程序");
     return;
   }
 
@@ -711,10 +707,10 @@ async function switchView(view: PanelView): Promise<void> {
   currentView = view;
   pageTitle.textContent = view === "today"
     ? "今日任务"
-    : view === "history" ? "完成历史" : "设置";
+    : view === "history" ? "完成历史" : "总计时";
   todayView.classList.toggle("hidden", view !== "today");
   historyView.classList.toggle("hidden", view !== "history");
-  settingsView.classList.toggle("hidden", view !== "settings");
+  statsView.classList.toggle("hidden", view !== "stats");
   addTaskButton.classList.toggle("hidden", view !== "today");
   for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
     const active = tab.dataset.view === view;
@@ -725,17 +721,14 @@ async function switchView(view: PanelView): Promise<void> {
   try {
     if (view === "today") await refreshToday();
     else if (view === "history") await refreshHistory();
-    else await refreshSettings();
+    else await refreshStats();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "无法读取页面");
   }
 }
 
 async function handlePanelCommand(command: PanelCommand): Promise<void> {
-  if (command === "open-settings") {
-    await switchView("settings");
-    return;
-  }
+  if (command !== "open-add-task") return;
   await switchView("today");
   openTaskDialog();
 }
@@ -757,50 +750,31 @@ clearProgramButton.addEventListener("click", () => {
 elementById<HTMLButtonElement>("closeRunningPickerButton").addEventListener("click", () => {
   runningProgramPicker.classList.add("hidden");
 });
-autoStartToggle.addEventListener("change", () => {
-  void updateSetting({ autoStart: autoStartToggle.checked });
-});
-alwaysOnTopToggle.addEventListener("change", () => {
-  void updateSetting({ alwaysOnTop: alwaysOnTopToggle.checked });
-});
-petSelect.addEventListener("change", () => {
-  if (petSelect.value) void updateSetting({ activePetKey: petSelect.value });
-});
-for (const button of document.querySelectorAll<HTMLButtonElement>("[data-pet-size]")) {
+runningProgramSearch.addEventListener("input", renderRunningPrograms);
+for (const button of document.querySelectorAll<HTMLButtonElement>("[data-stats-period]")) {
   button.addEventListener("click", () => {
-    const size = button.dataset.petSize;
-    if (size === "large" || size === "normal" || size === "small") {
-      void updateSetting({ petSize: size });
+    statsPeriod = button.dataset.statsPeriod === "week" ? "week" : "today";
+    for (const option of document.querySelectorAll<HTMLButtonElement>("[data-stats-period]")) {
+      const active = option.dataset.statsPeriod === statsPeriod;
+      option.classList.toggle("active", active);
+      option.setAttribute("aria-pressed", String(active));
     }
+    void refreshStats().catch((error: unknown) => {
+      setStatus(error instanceof Error ? error.message : "无法读取总计时");
+    });
   });
 }
-elementById<HTMLButtonElement>("openDataDirectoryButton").addEventListener("click", () => {
-  void openDataDirectory();
-});
-elementById<HTMLButtonElement>("exportBackupButton").addEventListener("click", () => {
-  void exportBackup();
-});
-elementById<HTMLButtonElement>("openGitHubButton").addEventListener("click", () => {
-  void settingsApi.openGitHub().then(unwrap).catch((error: unknown) => {
-    setStatus(error instanceof Error ? error.message : "无法打开 GitHub");
-  });
-});
-elementById<HTMLButtonElement>("openLicensesButton").addEventListener("click", () => {
-  void settingsApi.openLicenses().then(unwrap).catch((error: unknown) => {
-    setStatus(error instanceof Error ? error.message : "无法打开第三方许可证");
-  });
-});
 for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
   tab.addEventListener("click", () => {
     const view = tab.dataset.view;
-    void switchView(view === "history" || view === "settings" ? view : "today");
+    void switchView(view === "history" || view === "stats" ? view : "today");
   });
 }
 
 const unsubscribeStored = taskApi.onChanged(() => {
   const refresh = currentView === "today"
     ? refreshToday()
-    : currentView === "history" ? refreshHistory() : Promise.resolve();
+    : currentView === "history" ? refreshHistory() : refreshStats();
   void refresh.catch((error: unknown) => {
     setStatus(error instanceof Error ? error.message : "无法刷新任务");
   });
@@ -812,11 +786,17 @@ const unsubscribeRuntime = runtimeApi.onChanged((snapshots) => {
     snapshots.map((snapshot) => [snapshot.occurrenceId, snapshot])
   );
   if (currentView === "today") renderToday([...todayItems.values()]);
-});
-
-const unsubscribeSettings = settingsApi.onChanged((snapshot) => {
-  if (currentView === "settings") renderSettings(snapshot);
-  else currentSettings = snapshot;
+  if (currentView === "stats" && statsRefreshTimer === null) {
+    // 活动任务存在时最多每 4 秒读取一次统计；不会增加 SQLite 写入频率。
+    statsRefreshTimer = window.setTimeout(() => {
+      statsRefreshTimer = null;
+      if (currentView === "stats") {
+        void refreshStats().catch((error: unknown) => {
+          setStatus(error instanceof Error ? error.message : "无法刷新总计时");
+        });
+      }
+    }, 4_000);
+  }
 });
 
 const unsubscribeCommands = uiApi.onCommand((command) => {
@@ -828,13 +808,15 @@ const unsubscribeCommands = uiApi.onCommand((command) => {
 window.addEventListener("beforeunload", () => {
   unsubscribeStored();
   unsubscribeRuntime();
-  unsubscribeSettings();
   unsubscribeCommands();
+  if (statsRefreshTimer !== null) window.clearTimeout(statsRefreshTimer);
 });
 
-void refreshToday().then(() => {
-  taskApi.rendererReady(true);
-}).catch((error: unknown) => {
+void (async () => {
+  await refreshToday();
+  const initialCommand = await taskApi.rendererReady(true);
+  if (initialCommand) await handlePanelCommand(initialCommand);
+})().catch((error: unknown) => {
   setStatus(error instanceof Error ? error.message : "任务面板初始化失败");
-  taskApi.rendererReady(false);
+  void taskApi.rendererReady(false).catch(() => undefined);
 });

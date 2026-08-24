@@ -24,11 +24,11 @@
         <button id="addTaskButton" class="primary-button" type="button">＋ 添加</button>
       </header>
 
-      <!-- 今日、历史和 P4 简单设置页。 -->
+      <!-- 任务、历史和实际运行总计时。设置已拆分为独立窗口。 -->
       <nav class="tabs" aria-label="任务页面">
-        <button class="tab active" type="button" data-view="today" aria-selected="true">今日</button>
+        <button class="tab active" type="button" data-view="today" aria-selected="true">任务</button>
         <button class="tab" type="button" data-view="history" aria-selected="false">历史</button>
-        <button class="tab" type="button" data-view="settings" aria-selected="false">设置</button>
+        <button class="tab" type="button" data-view="stats" aria-selected="false">总计时</button>
       </nav>
 
       <p id="statusMessage" class="status-message" role="status" aria-live="polite"></p>
@@ -42,66 +42,17 @@
         <div id="historyList" class="history-list"></div>
       </section>
 
-      <section id="settingsView" class="view hidden" aria-label="TaskPet 设置">
-        <div class="settings-stack">
-          <section class="settings-card" aria-labelledby="generalSettingsTitle">
-            <h2 id="generalSettingsTitle" class="settings-title">常规</h2>
-            <label class="setting-row">
-              <span>
-                <strong>开机自动启动</strong>
-                <small id="autoStartHint">登录 Windows 后启动 TaskPet</small>
-              </span>
-              <input id="autoStartToggle" class="switch-input" type="checkbox" />
-            </label>
-          </section>
-
-          <section class="settings-card" aria-labelledby="petSettingsTitle">
-            <h2 id="petSettingsTitle" class="settings-title">桌宠</h2>
-            <label class="setting-field">
-              <span>宠物</span>
-              <select id="petSelect"></select>
-            </label>
-            <div class="setting-field">
-              <span>桌宠大小</span>
-              <div class="size-presets" role="group" aria-label="桌宠大小">
-                <button type="button" data-pet-size="large" aria-pressed="false">大 <small>125%</small></button>
-                <button type="button" data-pet-size="normal" aria-pressed="false">正常 <small>100%</small></button>
-                <button type="button" data-pet-size="small" aria-pressed="false">小 <small>50%</small></button>
-              </div>
-            </div>
-            <label class="setting-row">
-              <span>
-                <strong>始终置顶</strong>
-                <small>让桌宠保持在其他窗口上方</small>
-              </span>
-              <input id="alwaysOnTopToggle" class="switch-input" type="checkbox" />
-            </label>
-          </section>
-
-          <section class="settings-card" aria-labelledby="dataSettingsTitle">
-            <h2 id="dataSettingsTitle" class="settings-title">数据</h2>
-            <p id="dataDirectoryPath" class="settings-path"></p>
-            <div class="settings-actions">
-              <button id="openDataDirectoryButton" class="secondary-button" type="button">打开数据目录</button>
-              <button id="exportBackupButton" class="secondary-button" type="button">导出备份</button>
-            </div>
-          </section>
-
-          <section class="settings-card about-card" aria-labelledby="aboutSettingsTitle">
-            <h2 id="aboutSettingsTitle" class="settings-title">关于</h2>
-            <div class="about-product">
-              <img src="../../assets/logo.png" alt="" />
-              <span>
-                <strong id="aboutAppName">TaskPet</strong>
-                <small>版本 <span id="aboutVersion">—</span></small>
-              </span>
-            </div>
-            <div class="settings-actions">
-              <button id="openGitHubButton" class="text-button" type="button">GitHub</button>
-              <button id="openLicensesButton" class="text-button" type="button">第三方许可证</button>
-            </div>
-          </section>
+      <section id="statsView" class="view hidden" aria-label="任务总计时">
+        <div class="stats-periods" role="group" aria-label="统计范围">
+          <button class="stats-period active" type="button" data-stats-period="today" aria-pressed="true">今日计时</button>
+          <button class="stats-period" type="button" data-stats-period="week" aria-pressed="false">周计时</button>
         </div>
+        <div class="stats-total-card">
+          <span>累计专注</span>
+          <strong id="statsTotal">0 秒</strong>
+          <small id="statsRange">按 TaskPet 已记录的实际运行时间统计</small>
+        </div>
+        <div id="statsList" class="stats-list"></div>
       </section>
     </main>
 
@@ -131,7 +82,7 @@
         <div class="field-grid">
           <label class="field">
             <span>类型</span>
-            <select id="taskType" name="taskType">
+            <select id="taskType" class="modern-select" name="taskType">
               <option value="daily">每日</option>
               <option value="one_time">一次性</option>
             </select>
@@ -140,9 +91,10 @@
 
           <label class="field">
             <span>完成方式</span>
-            <select id="completionMode" name="completionMode">
+            <select id="completionMode" class="modern-select" name="completionMode">
               <option value="duration">目标时长</option>
               <option value="manual">手动勾选</option>
+              <option value="process_start">启动即完成</option>
             </select>
           </label>
         </div>
@@ -165,7 +117,7 @@
 
           <label id="matchModeField" class="field compact-field hidden">
             <span>匹配方式</span>
-            <select id="processMatchMode" name="processMatchMode">
+            <select id="processMatchMode" class="modern-select" name="processMatchMode">
               <option value="exact_path">精确 exe 路径（推荐）</option>
               <option value="process_name">仅按进程名</option>
             </select>
@@ -180,6 +132,10 @@
           <div id="runningProgramPicker" class="running-program-picker hidden" aria-live="polite">
             <div class="picker-heading">
               <strong>当前程序</strong>
+              <label class="program-search">
+                <span class="sr-only">搜索当前程序</span>
+                <input id="runningProgramSearch" type="search" placeholder="搜索 exe 或路径" autocomplete="off" />
+              </label>
               <button id="closeRunningPickerButton" class="text-button" type="button">收起</button>
             </div>
             <div id="runningProgramList" class="running-program-list"></div>

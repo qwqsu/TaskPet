@@ -221,6 +221,24 @@ h2 {
   font-size: 17px;
 }
 
+.launch-button {
+  min-width: 52px;
+  min-height: 31px;
+  padding: 0 10px;
+  border: 1px solid rgba(67, 91, 57, 0.28);
+  border-radius: 10px;
+  color: var(--accent-strong);
+  background: #f4f8f1;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.launch-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
 .empty-state {
   padding: 56px 22px;
   border: 1px dashed rgba(67, 91, 57, 0.28);
@@ -261,141 +279,93 @@ h2 {
   margin-top: 8px;
 }
 
-/* ---------- P4 简单设置页 ---------- */
+/* ---------- 今日 / 周实际运行总计时 ---------- */
 
-.settings-stack {
+.stats-periods {
   display: grid;
-  gap: 12px;
-}
-
-.settings-card {
-  padding: 17px;
-  border: 1px solid var(--line);
-  border-radius: 17px;
-  background: var(--card);
-  box-shadow: 0 8px 24px rgba(48, 43, 30, 0.045);
-}
-
-.settings-title {
-  margin: 0 0 14px;
-  color: var(--accent-strong);
-  font-size: 13px;
-  letter-spacing: 0.08em;
-}
-
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 18px;
-}
-
-.setting-row > span,
-.about-product > span {
-  display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 4px;
-}
-
-.setting-row strong,
-.setting-field > span,
-.about-product strong {
-  font-size: 14px;
-}
-
-.setting-row small,
-.about-product small {
-  color: var(--muted);
-  font-size: 11px;
-  line-height: 1.45;
-}
-
-.switch-input {
-  width: 19px;
-  height: 19px;
-  flex: none;
-  accent-color: var(--accent-strong);
-}
-
-.setting-field {
-  display: grid;
-  gap: 8px;
-  margin-bottom: 16px;
-  color: #555a50;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.setting-field select {
-  width: 100%;
-  height: 41px;
-  padding: 0 11px;
-  border: 1px solid rgba(48, 51, 42, 0.17);
-  border-radius: 11px;
-  outline: none;
-  color: var(--ink);
-  background: #fff;
-}
-
-.size-presets {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 7px;
-}
-
-.size-presets button {
-  min-height: 48px;
-  padding: 7px 5px;
+  margin-bottom: 12px;
+  padding: 4px;
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.stats-period {
+  min-height: 36px;
+  border: 0;
+  border-radius: 9px;
   color: var(--muted);
-  background: #fff;
+  background: transparent;
   cursor: pointer;
   font-weight: 750;
 }
 
-.size-presets button small {
-  display: block;
-  margin-top: 2px;
-  font-size: 10px;
-  font-weight: 500;
+.stats-period.active {
+  color: var(--accent-strong);
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(48, 43, 30, 0.08);
 }
 
-.size-presets button.active {
-  border-color: var(--accent);
+.stats-total-card {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+  padding: 18px;
+  border-radius: 17px;
+  color: #fff;
+  background: linear-gradient(135deg, #435b39, #708664);
+  box-shadow: 0 10px 25px rgba(67, 91, 57, 0.2);
+}
+
+.stats-total-card span,
+.stats-total-card small { color: rgba(255, 255, 255, 0.76); }
+.stats-total-card span { font-size: 12px; font-weight: 700; }
+.stats-total-card strong { font-size: 28px; font-variant-numeric: tabular-nums; }
+.stats-total-card small { font-size: 10px; }
+
+.stats-list {
+  display: grid;
+  gap: 8px;
+}
+
+.stats-entry {
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.stats-rank {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border-radius: 50%;
   color: var(--accent-strong);
   background: var(--accent-soft);
+  font-size: 11px;
+  font-weight: 850;
 }
 
-.settings-path {
+.stats-title {
   overflow: hidden;
-  margin: -4px 0 12px;
-  color: var(--muted);
-  font: 11px/1.45 Consolas, "Microsoft YaHei UI", sans-serif;
+  font-size: 14px;
+  font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.settings-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.about-product {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  margin-bottom: 13px;
-}
-
-.about-product img {
-  width: 42px;
-  height: 42px;
-  border-radius: 11px;
-}
-
-.about-card .text-button {
-  padding: 5px 0;
+.stats-duration {
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
 }
 
 .hidden {
@@ -538,6 +508,30 @@ h2 {
   font-size: 12px;
 }
 
+.program-search {
+  min-width: 0;
+  flex: 1;
+}
+
+.program-search input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 28px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: none;
+  background:
+    radial-gradient(circle at 12px 13px, transparent 4px, #8a8d84 4px 5px, transparent 5px),
+    linear-gradient(45deg, transparent 48%, #8a8d84 49% 58%, transparent 59%) 17px 18px / 7px 7px no-repeat,
+    #fff;
+  font-size: 11px;
+}
+
+.program-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(95, 116, 82, 0.1);
+}
+
 .running-program-list {
   display: grid;
   gap: 6px;
@@ -619,6 +613,26 @@ h2 {
 .field select:disabled {
   color: var(--muted);
   background: #eeede8;
+}
+
+.field select.modern-select {
+  padding-right: 38px;
+  appearance: none;
+  background:
+    linear-gradient(45deg, transparent 50%, #72766a 50%) calc(100% - 18px) 18px / 5px 5px no-repeat,
+    linear-gradient(135deg, #72766a 50%, transparent 50%) calc(100% - 13px) 18px / 5px 5px no-repeat,
+    linear-gradient(135deg, #fff 0%, #f8faf6 100%);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .field-grid {

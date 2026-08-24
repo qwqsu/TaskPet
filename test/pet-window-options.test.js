@@ -55,16 +55,18 @@ test("pet window zoom and default coordinates are bounded", () => {
 });
 
 test("pet window size has one zoom calculation for create, resize, and drag", () => {
-  assert.equal(MIN_ZOOM, 0.5);
+  assert.equal(MIN_ZOOM, 0.25);
+  assert.deepEqual(getPetWindowSize(0.25), { width: 120, height: 110 });
   assert.deepEqual(getPetWindowSize(0.5), { width: 120, height: 143 });
+  assert.deepEqual(getPetWindowSize(0.55), { width: 132, height: 157 });
   assert.deepEqual(getPetWindowSize(0.6666665243935752), { width: 160, height: 191 });
   assert.deepEqual(getPetWindowSize(1), { width: 240, height: 286 });
 });
 
 test("recall bounds center the current preset on the primary work area", () => {
   assert.deepEqual(
-    getCenteredPetBounds({ x: 0, y: 0, width: 1920, height: 1040 }, 1.25),
-    { x: 810, y: 341, width: 300, height: 358 }
+    getCenteredPetBounds({ x: 0, y: 0, width: 1920, height: 1040 }, 0.55),
+    { x: 894, y: 442, width: 132, height: 157 }
   );
 });
 

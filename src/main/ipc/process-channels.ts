@@ -8,6 +8,7 @@ export const PROCESS_CHANNELS = Object.freeze({
   removeRules: "taskpet:process-rules:remove",
   listRunning: "taskpet:processes:list-running",
   pickExecutable: "taskpet:processes:pick-executable",
+  launchBound: "taskpet:processes:launch-bound",
   runtimeSnapshot: "taskpet:runtime:snapshot",
   runtimeChanged: "taskpet:runtime:changed"
 });

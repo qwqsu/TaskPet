@@ -11,7 +11,8 @@ import { toLocalDateKey } from "../../shared/local-date";
 import type {
   ProcessInfo,
   ProcessSession,
-  RuntimeTaskSnapshot
+  RuntimeTaskSnapshot,
+  TaskRuntimeInterval
 } from "../../shared/process-types";
 import type { Task, TaskListItem, TaskOccurrence } from "../../shared/task-types";
 import type { TaskEventBus } from "./task-event-bus";
@@ -144,6 +145,9 @@ export class RuntimeTracker {
 
     const item = this.findOrCreateRuntimeCandidate(taskId, observedAt);
     if (!item) return false;
+    if (item.task.completionMode === "process_start") {
+      return this.completeProcessStart(item, observedAt);
+    }
     const timestamp = observedAt.toISOString();
     let session: ProcessSession | null = null;
 
@@ -235,6 +239,19 @@ export class RuntimeTracker {
     return [...this.active.values()].map((active) => this.snapshot(active, nowMs));
   }
 
+  activeIntervals(now = this.clock.now()): TaskRuntimeInterval[] {
+    const nowMs = now.getTime();
+    return [...this.active.values()].map((active) => ({
+      taskId: active.task.id,
+      title: active.task.title,
+      startedAt: new Date(active.startedAtMs).toISOString(),
+      endedAt: new Date(Math.max(
+        active.startedAtMs,
+        Math.min(nowMs, active.suspectedExitAtMs ?? Number.POSITIVE_INFINITY)
+      )).toISOString()
+    }));
+  }
+
   announceManualCompletion(item: TaskListItem): void {
     this.events.emit({
       type: "TASK_COMPLETED",
@@ -275,6 +292,22 @@ export class RuntimeTracker {
       updatedAt: timestamp
     });
     return this.tasks.findRuntimeCandidate(taskId, occurrenceDate);
+  }
+
+  private completeProcessStart(item: TaskListItem, observedAt: Date): boolean {
+    const completedAt = observedAt.toISOString();
+    const changed = this.tasks.completeProcessStartOccurrence(
+      item.occurrence.id,
+      completedAt
+    );
+    if (!changed) return false;
+    const completed = this.tasks.findOccurrenceItem(item.occurrence.id);
+    if (!completed) return false;
+    this.events.emit({
+      type: "TASK_COMPLETED",
+      task: this.itemSnapshot(completed, false)
+    });
+    return true;
   }
 
   private advanceTaskTo(taskId: string, requestedMs: number): void {
