@@ -19,7 +19,7 @@ test("pet renderer markup keeps the visible stage mounted", () => {
   assert.doesNotMatch(html, /bubble|settings/i);
 });
 
-test("pet renderer places a 13px task line above an emphasized 18px runtime", () => {
+test("pet renderer applies preset-scaled task and runtime font sizes", () => {
   const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
   const styles = fs.readFileSync(path.join(rendererRoot, "styles.css"), "utf8");
   const messageFontSize = styles.match(
@@ -35,8 +35,9 @@ test("pet renderer places a 13px task line above an emphasized 18px runtime", ()
   assert.match(styles, /\.pet\s*\{[^}]*top: var\(--pet-top\)/s);
   assert.match(styles, /\.pet-status-message\s*\{[^}]*text-overflow: ellipsis/s);
   assert.match(styles, /\.pet-status-detail\s*\{[^}]*font-variant-numeric: tabular-nums/s);
-  assert.equal(messageFontSize, "13px");
-  assert.equal(detailFontSize, "18px");
+  assert.equal(messageFontSize, "var(--status-message-font-size)");
+  assert.equal(detailFontSize, "var(--status-detail-font-size)");
+  assert.match(styles, /font-size: var\(--idle-font-size\)/);
 });
 
 test("idle pet shows only kaomoji without the white rounded status frame", () => {
@@ -54,17 +55,20 @@ test("idle pet shows only kaomoji without the white rounded status frame", () =>
   assert.match(source, /updatePetStatus\(nextState, message, detail\)/);
 });
 
-test("pet visual presets use exact independent width and height scaling", () => {
+test("pet renderer consumes the Main Process preset without a second zoom model", () => {
   const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
   const styles = fs.readFileSync(path.join(rendererRoot, "styles.css"), "utf8");
 
-  assert.match(styles, /--pet-width:\s*96px/);
-  assert.match(styles, /--pet-height:\s*104px/);
-  assert.match(source, /DEFAULT_VISUAL_SIZE = Object\.freeze\(\{ width: 96, height: 104 \}\)/);
-  assert.match(source, /--pet-width", `\$\{visualSize\.width\}px`/);
-  assert.match(source, /--pet-height", `\$\{visualSize\.height\}px`/);
+  assert.match(source, /function applyPetSizePreset\(nextPreset\)/);
+  assert.match(source, /\(preset\.windowWidth - preset\.petWidth\) \/ 2/);
+  assert.match(source, /--pet-width", `\$\{preset\.petWidth\}px`/);
+  assert.match(source, /--pet-height", `\$\{preset\.petHeight\}px`/);
+  assert.match(source, /preset\.petTop \+ preset\.petHeight \+ preset\.statusGap/);
   assert.match(source, /x: visualSize\.width \/ frame\.width/);
   assert.match(source, /y: visualSize\.height \/ frame\.height/);
+  assert.match(source, /onPetSizeChange\(\(payload\) => applyPetSizePreset\(payload\?\.preset\)\)/);
+  assert.doesNotMatch(source, /clampZoom|MIN_ZOOM|MAX_ZOOM|BASE_WINDOW_WIDTH|BASE_WINDOW_HEIGHT/);
+  assert.doesNotMatch(styles, /--zoom/);
 });
 
 test("pet click, double click, and right click use fixed mouse-action IPC", () => {

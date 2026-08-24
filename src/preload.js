@@ -23,5 +23,5 @@ contextBridge.exposeInMainWorld("taskPet", {
   rendererReady: () => ipcRenderer.send("taskpet:renderer-ready"),
   onStateChange: (callback) => subscribe("taskpet:state-changed", callback),
   onPetChange: (callback) => subscribe("taskpet:pet-changed", callback),
-  onZoomChange: (callback) => subscribe("taskpet:zoom-changed", callback)
+  onPetSizeChange: (callback) => subscribe("taskpet:pet-size-changed", callback)
 });

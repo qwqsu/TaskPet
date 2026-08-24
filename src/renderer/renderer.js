@@ -13,9 +13,6 @@ const petStatusDetail = document.getElementById("petStatusDetail");
 // ---------- 动画格式与页面内存状态 ----------
 
 const DEFAULT_FRAME = Object.freeze({ width: 192, height: 208, columns: 8, rows: 9 });
-const DEFAULT_VISUAL_SIZE = Object.freeze({ width: 96, height: 104 });
-const BASE_WINDOW_WIDTH = 240;
-const BASE_WINDOW_HEIGHT = 286;
 const DOUBLE_CLICK_DELAY_MS = 350;
 const IDLE_MESSAGES = Object.freeze([
   "ヾ(•ω•`)o",
@@ -48,17 +45,14 @@ let frameIndex = 0;
 let frameTimer = null;
 let dragStart = null;
 let lastDragDirection = null;
-let zoom = 0.5;
-let minZoom = 0.25;
-let maxZoom = 2.4;
-let visualSize = { ...DEFAULT_VISUAL_SIZE };
+let visualSize = { width: 1, height: 1 };
 let animationStarted = false;
 let pendingSingleClickTimer = null;
 let suppressNextClick = false;
 let idleMessageIndex = 0;
 let idleMessageTimer = null;
 
-// ---------- 调试边框、输入归一化与缩放 ----------
+// ---------- 调试边框、输入归一化与三档尺寸 ----------
 
 function updateDebugBoundsLabel() {
   stage.dataset.debugBounds = `窗口 ${window.innerWidth} × ${window.innerHeight}`;
@@ -73,21 +67,51 @@ function normalizeState(state) {
   return ALLOWED_STATES.has(state) ? state : "idle";
 }
 
-function clampZoom(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 1;
-  return Math.max(minZoom, Math.min(maxZoom, numeric));
-}
-
 function positiveInteger(value, fallback, minimum = 1) {
   const numeric = Number(value);
   return Number.isInteger(numeric) && numeric >= minimum ? numeric : fallback;
 }
 
-function normalizeVisualSize(nextSize = {}) {
+function requiredPositiveNumber(value, label) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new TypeError(`${label} must be a positive number`);
+  }
+  return numeric;
+}
+
+function requiredNonNegativeNumber(value, label) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new TypeError(`${label} must be a non-negative number`);
+  }
+  return numeric;
+}
+
+function normalizePetSizePreset(nextPreset = {}) {
   return {
-    width: positiveInteger(nextSize.width, DEFAULT_VISUAL_SIZE.width),
-    height: positiveInteger(nextSize.height, DEFAULT_VISUAL_SIZE.height)
+    scale: requiredPositiveNumber(nextPreset.scale, "preset.scale"),
+    petWidth: requiredPositiveNumber(nextPreset.petWidth, "preset.petWidth"),
+    petHeight: requiredPositiveNumber(nextPreset.petHeight, "preset.petHeight"),
+    windowWidth: requiredPositiveNumber(nextPreset.windowWidth, "preset.windowWidth"),
+    windowHeight: requiredPositiveNumber(nextPreset.windowHeight, "preset.windowHeight"),
+    petTop: requiredNonNegativeNumber(nextPreset.petTop, "preset.petTop"),
+    statusGap: requiredNonNegativeNumber(nextPreset.statusGap, "preset.statusGap"),
+    statusSideMargin: requiredNonNegativeNumber(
+      nextPreset.statusSideMargin,
+      "preset.statusSideMargin"
+    ),
+    statusPaddingX: requiredNonNegativeNumber(nextPreset.statusPaddingX, "preset.statusPaddingX"),
+    statusPaddingY: requiredNonNegativeNumber(nextPreset.statusPaddingY, "preset.statusPaddingY"),
+    idleFontSize: requiredPositiveNumber(nextPreset.idleFontSize, "preset.idleFontSize"),
+    statusMessageFontSize: requiredPositiveNumber(
+      nextPreset.statusMessageFontSize,
+      "preset.statusMessageFontSize"
+    ),
+    statusDetailFontSize: requiredPositiveNumber(
+      nextPreset.statusDetailFontSize,
+      "preset.statusDetailFontSize"
+    )
   };
 }
 
@@ -115,29 +139,43 @@ function applyAnimations(actions) {
   animations = next;
 }
 
-function applyZoom(nextZoom, nextVisualSize) {
-  // 窗口外壳继续使用 zoom；图片本体使用精确宽高，避免小档被等比缩放成 48×52。
-  zoom = clampZoom(nextZoom);
-  visualSize = normalizeVisualSize(nextVisualSize);
+function applyPetSizePreset(nextPreset) {
+  const preset = normalizePetSizePreset(nextPreset);
+  visualSize = { width: preset.petWidth, height: preset.petHeight };
   updateDebugBoundsLabel();
-  const windowWidth = window.innerWidth || Math.round(BASE_WINDOW_WIDTH * zoom);
-  const petLeft = Math.max(0, Math.round((windowWidth - visualSize.width) / 2));
-  const statusGap = Math.max(3, Math.round(10 * zoom));
-  document.documentElement.style.setProperty("--zoom", String(zoom));
+  const petLeft = Math.max(0, Math.round((preset.windowWidth - preset.petWidth) / 2));
   document.documentElement.style.setProperty("--pet-left", `${petLeft}px`);
-  document.documentElement.style.setProperty("--pet-top", "0px");
-  document.documentElement.style.setProperty("--pet-width", `${visualSize.width}px`);
-  document.documentElement.style.setProperty("--pet-height", `${visualSize.height}px`);
-  document.documentElement.style.setProperty("--sprite-left", "0px");
-  document.documentElement.style.setProperty("--status-top", `${visualSize.height + statusGap}px`);
+  document.documentElement.style.setProperty("--pet-top", `${preset.petTop}px`);
+  document.documentElement.style.setProperty("--pet-width", `${preset.petWidth}px`);
+  document.documentElement.style.setProperty("--pet-height", `${preset.petHeight}px`);
+  document.documentElement.style.setProperty(
+    "--status-top",
+    `${preset.petTop + preset.petHeight + preset.statusGap}px`
+  );
+  document.documentElement.style.setProperty(
+    "--status-side-margin",
+    `${preset.statusSideMargin}px`
+  );
+  document.documentElement.style.setProperty("--status-padding-x", `${preset.statusPaddingX}px`);
+  document.documentElement.style.setProperty("--status-padding-y", `${preset.statusPaddingY}px`);
+  document.documentElement.style.setProperty("--idle-font-size", `${preset.idleFontSize}px`);
+  document.documentElement.style.setProperty(
+    "--status-message-font-size",
+    `${preset.statusMessageFontSize}px`
+  );
+  document.documentElement.style.setProperty(
+    "--status-detail-font-size",
+    `${preset.statusDetailFontSize}px`
+  );
   document.documentElement.style.setProperty(
     "--fallback-scale-x",
-    String(visualSize.width / 126)
+    String(preset.petWidth / 126)
   );
   document.documentElement.style.setProperty(
     "--fallback-scale-y",
-    String(visualSize.height / 164)
+    String(preset.petHeight / 164)
   );
+  document.documentElement.classList.add("pet-size-ready");
   updateSpriteMetrics();
   drawFrame();
 }
@@ -322,10 +360,8 @@ function handlePetContextMenu(event) {
 
 window.taskPet.getInitialState().then((initial) => {
   const config = initial?.config || {};
-  minZoom = Number(config.minZoom) || minZoom;
-  maxZoom = Number(config.maxZoom) || maxZoom;
   applyAnimations(initial?.actions);
-  applyZoom(Number(config.zoom) || 0.5, config.visualSize);
+  applyPetSizePreset(config.preset);
   applyDebugBounds(config.debugPetBounds);
   setPet(initial?.activePet);
   setPetState(initial);
@@ -337,7 +373,7 @@ window.taskPet.getInitialState().then((initial) => {
 
 window.taskPet.onPetChange(setPet);
 window.taskPet.onStateChange(setPetState);
-window.taskPet.onZoomChange((payload) => applyZoom(payload?.zoom, payload?.visualSize));
+window.taskPet.onPetSizeChange((payload) => applyPetSizePreset(payload?.preset));
 pet.addEventListener("pointerdown", startDrag);
 pet.addEventListener("pointermove", moveDrag);
 pet.addEventListener("pointerup", endDrag);

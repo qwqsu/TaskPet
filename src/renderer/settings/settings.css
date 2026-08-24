@@ -229,6 +229,30 @@ button { color: inherit; }
   line-height: 1.45;
 }
 
+#autoStartHint.warning {
+  color: #9a6517;
+}
+
+.startup-apps-button {
+  justify-self: start;
+  margin-top: 3px;
+  padding: 5px 9px;
+  border: 1px solid #dfc38e;
+  border-radius: 8px;
+  color: #80520e;
+  background: #fff9ed;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.startup-apps-button:hover {
+  border-color: #b88732;
+}
+
+.startup-apps-button[hidden] {
+  display: none;
+}
+
 .switch {
   position: relative;
   width: 52px;
@@ -345,9 +369,9 @@ button { color: inherit; }
   filter: drop-shadow(0 4px 5px rgba(91, 57, 18, 0.16));
 }
 
-.preview-large { font-size: 42px; }
+.preview-large { font-size: 38px; }
 .preview-normal { font-size: 34px; }
-.preview-small { font-size: 25px; }
+.preview-small { font-size: 18px; }
 
 .size-option i {
   position: absolute;

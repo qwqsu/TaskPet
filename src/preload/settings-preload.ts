@@ -12,6 +12,7 @@ const SETTINGS_CHANNELS = Object.freeze({
   update: "taskpet:settings:update",
   openDataDirectory: "taskpet:data:open-directory",
   exportBackup: "taskpet:data:export-backup",
+  openStartupApps: "taskpet:settings:open-startup-apps",
   openGitHub: "taskpet:about:open-github",
   openLicenses: "taskpet:about:open-licenses",
   changed: "taskpet:settings:changed",
@@ -43,6 +44,9 @@ contextBridge.exposeInMainWorld("taskPetSettings", Object.freeze({
   ),
   exportBackup: (): Promise<TaskApiResult<DataActionResult>> => (
     ipcRenderer.invoke(SETTINGS_CHANNELS.exportBackup)
+  ),
+  openStartupApps: (): Promise<TaskApiResult<void>> => (
+    ipcRenderer.invoke(SETTINGS_CHANNELS.openStartupApps)
   ),
   openGitHub: (): Promise<TaskApiResult<void>> => (
     ipcRenderer.invoke(SETTINGS_CHANNELS.openGitHub)

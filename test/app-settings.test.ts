@@ -2,33 +2,71 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PET_MOUSE_BINDINGS,
-  PET_VISUAL_SIZES,
-  PET_SIZE_ZOOMS,
+  PET_SIZE_PRESETS,
   UpdateAppSettingsInputSchema,
   normalizePetMouseBindings,
   normalizePetSize,
-  petMouseActionForGesture,
-  petSizeFromZoom
+  petMouseActionForGesture
 } from "../src/shared/app-settings";
 
-test("pet size exposes three exact visual presets and compact window scales", () => {
-  assert.deepEqual(PET_VISUAL_SIZES, {
-    large: { width: 105, height: 114 },
-    normal: { width: 96, height: 104 },
-    small: { width: 43, height: 52 }
+test("pet size exposes one complete source of truth for all three presets", () => {
+  assert.deepEqual(PET_SIZE_PRESETS, {
+    small: {
+      scale: 0.25,
+      petWidth: 48,
+      petHeight: 52,
+      windowWidth: 60,
+      windowHeight: 72,
+      petTop: 0,
+      statusGap: 2,
+      statusSideMargin: 6,
+      statusPaddingX: 2,
+      statusPaddingY: 0,
+      idleFontSize: 8,
+      statusMessageFontSize: 5,
+      statusDetailFontSize: 7
+    },
+    normal: {
+      scale: 0.5,
+      petWidth: 96,
+      petHeight: 104,
+      windowWidth: 120,
+      windowHeight: 143,
+      petTop: 0,
+      statusGap: 5,
+      statusSideMargin: 12,
+      statusPaddingX: 5,
+      statusPaddingY: 2,
+      idleFontSize: 13,
+      statusMessageFontSize: 10,
+      statusDetailFontSize: 13
+    },
+    large: {
+      scale: 0.55,
+      petWidth: 105,
+      petHeight: 115,
+      windowWidth: 132,
+      windowHeight: 157,
+      petTop: 0,
+      statusGap: 5,
+      statusSideMargin: 12,
+      statusPaddingX: 6,
+      statusPaddingY: 2,
+      idleFontSize: 14,
+      statusMessageFontSize: 10,
+      statusDetailFontSize: 14
+    }
   });
-  assert.deepEqual(PET_SIZE_ZOOMS, {
-    large: 0.55,
-    normal: 0.5,
-    small: 0.25
-  });
-  assert.equal(normalizePetSize("large"), "large");
+});
+
+test("legacy zoom is read only when a named size has not already been saved", () => {
+  assert.equal(normalizePetSize("large", 0.5), "large");
+  assert.equal(normalizePetSize("normal", 0.5), "normal");
+  assert.equal(normalizePetSize("small", 1.25), "small");
   assert.equal(normalizePetSize("unknown", 1.24), "large");
-  assert.equal(normalizePetSize("unknown", 1), "normal");
-  assert.equal(normalizePetSize("unknown", 0.66), "small");
-  assert.equal(petSizeFromZoom(0.55), "large");
-  assert.equal(petSizeFromZoom(0.5), "normal");
-  assert.equal(petSizeFromZoom(0.25), "small");
+  assert.equal(normalizePetSize("unknown", 1), "large");
+  assert.equal(normalizePetSize("unknown", 0.5), "normal");
+  assert.equal(normalizePetSize("unknown", 0.25), "small");
 });
 
 test("settings schema rejects internal monitor parameters and unknown controls", () => {

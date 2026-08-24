@@ -17,8 +17,12 @@ interface PetMouseBindings {
 }
 
 interface AppSettingsSnapshot {
-  autoStart: boolean;
-  autoStartSupported: boolean;
+  autoStart: {
+    supported: boolean;
+    registered: boolean;
+    willLaunch: boolean | null;
+    blockedByWindows: boolean;
+  };
   petSize: PetSize;
   alwaysOnTop: boolean;
   mouseBindings: PetMouseBindings;
@@ -50,6 +54,7 @@ interface SettingsBridge {
   }): Promise<ApiResult<AppSettingsSnapshot>>;
   openDataDirectory(): Promise<ApiResult<DataActionResult>>;
   exportBackup(): Promise<ApiResult<DataActionResult>>;
+  openStartupApps(): Promise<ApiResult<void>>;
   openGitHub(): Promise<ApiResult<void>>;
   openLicenses(): Promise<ApiResult<void>>;
   rendererReady(ok: boolean): void;
@@ -85,6 +90,7 @@ const settingsApi = (window as unknown as SettingsWindow).taskPetSettings;
 const status = elementById<HTMLParagraphElement>("settingsStatus");
 const autoStartToggle = elementById<HTMLInputElement>("autoStartToggle");
 const autoStartHint = elementById<HTMLElement>("autoStartHint");
+const openStartupAppsButton = elementById<HTMLButtonElement>("openStartupAppsButton");
 const petSelect = elementById<HTMLSelectElement>("petSelect");
 const alwaysOnTopToggle = elementById<HTMLInputElement>("alwaysOnTopToggle");
 const leftClickAction = elementById<HTMLSelectElement>("leftClickAction");
@@ -121,11 +127,15 @@ function fillActionSelect(select: HTMLSelectElement): void {
 
 function render(snapshot: AppSettingsSnapshot): void {
   currentSettings = snapshot;
-  autoStartToggle.checked = snapshot.autoStart;
-  autoStartToggle.disabled = !snapshot.autoStartSupported;
-  autoStartHint.textContent = snapshot.autoStartSupported
-    ? "添加到 Windows 启动项，进入桌面后自动启动 TaskPet"
-    : "开机自动启动仅在 TaskPet Windows 安装版中可用";
+  autoStartToggle.checked = snapshot.autoStart.registered;
+  autoStartToggle.disabled = !snapshot.autoStart.supported;
+  autoStartHint.classList.toggle("warning", snapshot.autoStart.blockedByWindows);
+  autoStartHint.textContent = !snapshot.autoStart.supported
+    ? "开机自动启动仅在 TaskPet Windows 安装版中可用"
+    : snapshot.autoStart.blockedByWindows
+      ? "TaskPet 已添加到 Windows 启动项，但 Windows 当前可能禁用了该启动项。"
+      : "进入 Windows 桌面后自动启动 TaskPet";
+  openStartupAppsButton.hidden = !snapshot.autoStart.blockedByWindows;
   alwaysOnTopToggle.checked = snapshot.alwaysOnTop;
 
   petSelect.replaceChildren(...snapshot.pets.map((pet) => {
@@ -182,6 +192,11 @@ for (const select of [leftClickAction, doubleClickAction, rightClickAction]) {
 
 autoStartToggle.addEventListener("change", () => {
   void updateSetting({ autoStart: autoStartToggle.checked });
+});
+openStartupAppsButton.addEventListener("click", () => {
+  void settingsApi.openStartupApps().then(unwrap).catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "无法打开 Windows 启动应用设置");
+  });
 });
 alwaysOnTopToggle.addEventListener("change", () => {
   void updateSetting({ alwaysOnTop: alwaysOnTopToggle.checked });

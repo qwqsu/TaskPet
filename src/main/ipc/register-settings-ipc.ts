@@ -17,9 +17,12 @@ export interface RegisterSettingsIpcOptions {
   ipcMain: IpcMain;
   isTrustedSender: (event: IpcMainInvokeEvent) => boolean;
   getSettings: () => AppSettingsSnapshot;
-  updateSettings: (input: UpdateAppSettingsInput) => AppSettingsSnapshot;
+  updateSettings: (
+    input: UpdateAppSettingsInput
+  ) => AppSettingsSnapshot | Promise<AppSettingsSnapshot>;
   openDataDirectory: () => Promise<DataActionResult>;
   exportBackup: () => Promise<DataActionResult>;
+  openStartupApps: () => Promise<void>;
   openGitHub: () => Promise<void>;
   openLicenses: () => Promise<void>;
 }
@@ -68,6 +71,7 @@ export function registerSettingsIpc(options: RegisterSettingsIpcOptions): () => 
   handle(SETTINGS_CHANNELS.update, UpdateAppSettingsInputSchema, options.updateSettings);
   handle(SETTINGS_CHANNELS.openDataDirectory, EmptyTaskInputSchema, options.openDataDirectory);
   handle(SETTINGS_CHANNELS.exportBackup, EmptyTaskInputSchema, options.exportBackup);
+  handle(SETTINGS_CHANNELS.openStartupApps, EmptyTaskInputSchema, options.openStartupApps);
   handle(SETTINGS_CHANNELS.openGitHub, EmptyTaskInputSchema, options.openGitHub);
   handle(SETTINGS_CHANNELS.openLicenses, EmptyTaskInputSchema, options.openLicenses);
 
@@ -75,4 +79,3 @@ export function registerSettingsIpc(options: RegisterSettingsIpcOptions): () => 
     for (const channel of registeredChannels) options.ipcMain.removeHandler(channel);
   };
 }
-

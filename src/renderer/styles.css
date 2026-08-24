@@ -7,16 +7,20 @@
 }
 
 :root {
-  /* 默认值对应“正常”96×104；renderer.js 会按三档精确写入。 */
-  --zoom: 0.5;
-  --pet-left: 12px;
+  /* renderer.js 从 Main Process 的唯一尺寸预设写入；未收到预设前不显示舞台。 */
+  --pet-left: 0px;
   --pet-top: 0px;
-  --pet-width: 96px;
-  --pet-height: 104px;
-  --sprite-left: 0px;
-  --status-top: 109px;
-  --fallback-scale-x: 0.7619047619;
-  --fallback-scale-y: 0.6341463415;
+  --pet-width: 0px;
+  --pet-height: 0px;
+  --status-top: 0px;
+  --status-side-margin: 0px;
+  --status-padding-x: 0px;
+  --status-padding-y: 0px;
+  --idle-font-size: 0px;
+  --status-message-font-size: 0px;
+  --status-detail-font-size: 0px;
+  --fallback-scale-x: 0;
+  --fallback-scale-y: 0;
 }
 
 html,
@@ -35,6 +39,11 @@ body {
   width: 100vw;
   height: 100vh;
   -webkit-app-region: no-drag;
+  visibility: hidden;
+}
+
+.pet-size-ready .stage {
+  visibility: visible;
 }
 
 /* dev:bounds 专用：红=窗口、绿=宠物命中区、蓝=sprite 单帧。 */
@@ -84,9 +93,9 @@ body {
   top: var(--status-top);
   left: 50%;
   z-index: 5;
-  width: calc(100% - 24px);
+  width: calc(100% - var(--status-side-margin) - var(--status-side-margin));
   margin: 0;
-  padding: 4px 11px 5px;
+  padding: var(--status-padding-y) var(--status-padding-x);
   border: 1px solid rgba(255, 255, 255, 0.7);
   border-radius: 12px;
   color: #263241;
@@ -120,12 +129,12 @@ body {
 }
 
 .pet-status-message {
-  /* 任务名保持一行并省略；13px 弱化标题，让 18px 计时成为视觉重点。 */
+  /* 任务名保持一行并省略；具体字号由当前尺寸 preset 统一提供。 */
   display: block;
   width: 100%;
   overflow: hidden;
   color: #263241;
-  font-size: 13px;
+  font-size: var(--status-message-font-size);
   font-weight: 700;
   line-height: 1.15;
   text-overflow: ellipsis;
@@ -135,7 +144,7 @@ body {
 .pet-status.idle-text .pet-status-message {
   overflow: visible;
   color: #263241;
-  font-size: 16px;
+  font-size: var(--idle-font-size);
   text-shadow: 0 1px 4px rgba(255, 255, 255, 0.95);
 }
 
@@ -144,7 +153,7 @@ body {
   display: none;
   margin-top: 2px;
   color: #11845b;
-  font-size: 18px;
+  font-size: var(--status-detail-font-size);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
@@ -175,7 +184,7 @@ body {
 /* spritesheet 通过 background-position 切换帧，本元素始终只显示一帧大小。 */
 .sprite {
   position: absolute;
-  left: var(--sprite-left);
+  left: 0;
   bottom: 0;
   width: var(--pet-width);
   height: var(--pet-height);

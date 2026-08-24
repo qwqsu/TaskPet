@@ -14,11 +14,6 @@ const {
 const { PET_ACTIONS, PetStateController } = require("./pet-state");
 const { createPetDragSession, petBoundsForCursor } = require("./pet-window-drag");
 const {
-  BASE_WINDOW_HEIGHT,
-  BASE_WINDOW_WIDTH,
-  MAX_ZOOM,
-  MIN_ZOOM,
-  clampZoom,
   createPetWindowOptions,
   getCenteredPetBounds,
   getPetWindowSize
@@ -26,8 +21,7 @@ const {
 const { createFileLogger } = require("./app-logger");
 const {
   DEFAULT_PET_MOUSE_BINDINGS,
-  PET_VISUAL_SIZES,
-  PET_SIZE_ZOOMS,
+  PET_SIZE_PRESETS,
   normalizePetMouseBindings,
   normalizePetSize,
   petMouseActionForGesture
@@ -43,8 +37,18 @@ const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 const LOGO_PATH = path.join(__dirname, "assets", "logo.png");
 const BUNDLED_PETS_ROOT = path.join(__dirname, "assets", "pets");
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
+const IS_LOGIN_ITEM_SMOKE_TEST = process.argv.includes("--smoke-test-login-item");
 const IS_DEBUG_PET_BOUNDS = process.argv.includes("--debug-pet-bounds");
+const IS_DEBUG_PET_WORKING = process.argv.includes("--debug-pet-working");
+const DEBUG_PET_SIZE = process.argv
+  .find((argument) => argument.startsWith("--debug-pet-size="))
+  ?.slice("--debug-pet-size=".length);
+const DEBUG_PET_BOUNDS_CAPTURE_PATH = process.argv
+  .find((argument) => argument.startsWith("--debug-pet-bounds-capture="))
+  ?.slice("--debug-pet-bounds-capture=".length);
 const SMOKE_USER_DATA_PATH = path.join(os.tmpdir(), "TaskPet-smoke");
+const LOGIN_ITEM_SMOKE_NAME = "TaskPet Login Item Smoke Test";
+const LOGIN_ITEM_SMOKE_ARGS = [];
 
 // Main Process 持有原生对象；Renderer 只能通过 preload 请求有限操作。
 let petWindow = null;
@@ -57,6 +61,7 @@ let taskSystem = null;
 let petDragSession = null;
 let loginItemService = null;
 let logger = null;
+let petBoundsCaptureStarted = false;
 const smokeReady = { pet: false, panel: false, settings: false };
 
 const petState = new PetStateController({
@@ -84,12 +89,16 @@ function petWindowBounds() {
   return petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null;
 }
 
+function currentPetSizePreset() {
+  return PET_SIZE_PRESETS[settings.petSize] || PET_SIZE_PRESETS.normal;
+}
+
 function enforcePetWindowSize() {
   if (!petWindow || petWindow.isDestroyed()) return null;
-  const bounds = petWindow.getBounds();
-  const size = getPetWindowSize(settings.zoom);
-  if (bounds.width !== size.width || bounds.height !== size.height) {
-    petWindow.setBounds({ x: bounds.x, y: bounds.y, ...size });
+  const contentBounds = petWindow.getContentBounds();
+  const size = getPetWindowSize(currentPetSizePreset());
+  if (contentBounds.width !== size.width || contentBounds.height !== size.height) {
+    petWindow.setContentSize(size.width, size.height);
   }
   return petWindow.getBounds();
 }
@@ -97,10 +106,11 @@ function enforcePetWindowSize() {
 function startPetWindowDrag() {
   if (!petWindow || petWindow.isDestroyed()) return false;
   const cursorPoint = screen.getCursorScreenPoint();
+  const bounds = enforcePetWindowSize() || petWindow.getBounds();
   petDragSession = createPetDragSession({
-    windowBounds: petWindow.getBounds(),
+    windowBounds: bounds,
     cursorPoint,
-    windowSize: getPetWindowSize(settings.zoom)
+    windowSize: { width: bounds.width, height: bounds.height }
   });
   petWindow.setBounds(petBoundsForCursor(petDragSession, cursorPoint));
   return true;
@@ -145,10 +155,17 @@ function loadSettings() {
   settings = {
     ...raw,
     petSize,
-    zoom: PET_SIZE_ZOOMS[petSize],
     alwaysOnTop: raw.alwaysOnTop !== false,
     mouseBindings: normalizePetMouseBindings(raw.mouseBindings)
   };
+  // zoom 只作为旧设置迁移输入；三档尺寸从此只由 PET_SIZE_PRESETS 决定。
+  delete settings.zoom;
+  if (
+    IS_DEBUG_PET_BOUNDS
+    && (DEBUG_PET_SIZE === "small" || DEBUG_PET_SIZE === "normal" || DEBUG_PET_SIZE === "large")
+  ) {
+    settings.petSize = DEBUG_PET_SIZE;
+  }
 }
 
 function saveSettings() {
@@ -172,6 +189,45 @@ function createAppIcon() {
   return nativeImage.createFromDataURL(
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAGFBMVEUAAAAYIi9i5v9y8qaZfP/90WYfKz2xyNj28m6BAAAAB3RSTlMA///f39+fn6uU/gAAAEFJREFUeNqVj0kOwCAIBQO//2XnplkYQYJGk0BHyDKJg1xmEAjJQWYNZUdGgTYosAkfiBPwYQnKN3qHf6Snw6gudTW2DdqgAhoBA3kwAAAAAElFTkSuQmCC"
   );
+}
+
+async function runPackagedLoginItemSmokeTest() {
+  if (process.platform !== "win32" || !app.isPackaged) {
+    throw new Error("Packaged login item smoke test requires a packaged Windows build");
+  }
+
+  const service = new LoginItemService(app, {
+    platform: "win32",
+    executablePath: process.execPath,
+    appName: LOGIN_ITEM_SMOKE_NAME
+  });
+  try {
+    const enabled = await service.setEnabled(true);
+    if (!enabled.registered) throw new Error("Temporary login item was not registered");
+    const disabled = await service.setEnabled(false);
+    if (disabled.registered) throw new Error("Temporary login item was not removed");
+    console.log(
+      `TaskPet packaged login item smoke test ready registered=${String(enabled.registered)}`
+      + ` willLaunch=${String(enabled.willLaunch)} removed=${String(!disabled.registered)}`
+    );
+  } catch (error) {
+    console.error(
+      `TaskPet packaged login item smoke snapshot=${JSON.stringify(app.getLoginItemSettings({
+        path: process.execPath,
+        args: LOGIN_ITEM_SMOKE_ARGS
+      }))}`
+    );
+    throw error;
+  } finally {
+    // 即使验证中途失败，也用同一 path/args/name 清理临时 HKCU 启动项。
+    app.setLoginItemSettings({
+      path: process.execPath,
+      args: LOGIN_ITEM_SMOKE_ARGS,
+      name: LOGIN_ITEM_SMOKE_NAME,
+      openAtLogin: false,
+      enabled: false
+    });
+  }
 }
 
 // ---------- 宠物资源发现与状态广播 ----------
@@ -226,11 +282,10 @@ function broadcastPet() {
   sendToPetWindow("taskpet:pet-changed", toPetPayload(activePet));
 }
 
-function broadcastZoom() {
-  sendToPetWindow("taskpet:zoom-changed", {
+function broadcastPetSize() {
+  sendToPetWindow("taskpet:pet-size-changed", {
     petSize: settings.petSize,
-    visualSize: PET_VISUAL_SIZES[settings.petSize],
-    zoom: clampZoom(settings.zoom),
+    preset: currentPetSizePreset(),
     bounds: petWindow && !petWindow.isDestroyed() ? petWindow.getBounds() : null
   });
 }
@@ -293,8 +348,12 @@ function getLicensesPath() {
 
 function appSettingsSnapshot() {
   return {
-    autoStart: loginItemService?.enabled ?? false,
-    autoStartSupported: loginItemService?.supported ?? false,
+    autoStart: loginItemService?.status ?? {
+      supported: false,
+      registered: false,
+      willLaunch: null,
+      blockedByWindows: false
+    },
     petSize: settings.petSize,
     alwaysOnTop: settings.alwaysOnTop !== false,
     mouseBindings: { ...settings.mouseBindings },
@@ -311,22 +370,20 @@ function appSettingsSnapshot() {
   };
 }
 
-function applyAppSettings(input) {
+async function applyAppSettings(input) {
   let persistSettings = false;
 
   if (input.autoStart !== undefined) {
     if (!loginItemService?.supported) {
       throw new Error("开机自动启动仅在 TaskPet 安装版中可用");
     }
-    const enabled = loginItemService.setEnabled(input.autoStart);
-    if (enabled !== input.autoStart) throw new Error("Windows 未能更新开机启动状态");
-    logger?.info(`Auto start ${enabled ? "enabled" : "disabled"}`);
+    const autoStart = await loginItemService.setEnabled(input.autoStart);
+    logger?.info(`Auto start ${autoStart.registered ? "enabled" : "disabled"}`);
   }
 
   if (input.petSize !== undefined) {
     settings.petSize = input.petSize;
-    settings.zoom = PET_SIZE_ZOOMS[input.petSize];
-    resizePetWindow(settings.zoom);
+    resizePetWindow(input.petSize);
     persistSettings = true;
   }
 
@@ -353,10 +410,17 @@ function applyAppSettings(input) {
   return appSettingsSnapshot();
 }
 
-function applyTraySetting(input) {
-  const snapshot = applyAppSettings(input);
+async function applyTraySetting(input) {
+  const snapshot = await applyAppSettings(input);
   taskSystem?.notifySettingsChanged();
   return snapshot;
+}
+
+async function openWindowsStartupApps() {
+  if (process.platform !== "win32") {
+    throw new Error("Windows 启动应用设置仅在 Windows 中可用");
+  }
+  await shell.openExternal("ms-settings:startupapps");
 }
 
 async function openGitHub() {
@@ -381,7 +445,7 @@ function createPetWindow() {
     preloadPath: path.join(__dirname, "preload.js"),
     icon: createAppIcon(),
     savedBounds: settings.windowBounds,
-    zoom: settings.zoom,
+    preset: currentPetSizePreset(),
     alwaysOnTop: settings.alwaysOnTop !== false,
     workAreas
   }));
@@ -408,24 +472,22 @@ function saveWindowBounds() {
   saveSettings();
 }
 
-function resizePetWindow(zoomInput) {
+function resizePetWindow(petSize) {
   if (!petWindow || petWindow.isDestroyed()) return { ok: false };
 
-  const zoom = clampZoom(zoomInput);
-  const bounds = petWindow.getBounds();
-  const { width, height } = getPetWindowSize(zoom);
-  petWindow.setBounds({ x: bounds.x, y: bounds.y, width, height });
-  settings.zoom = zoom;
+  const preset = PET_SIZE_PRESETS[petSize] || PET_SIZE_PRESETS.normal;
+  const { width, height } = getPetWindowSize(preset);
+  petWindow.setContentSize(width, height);
   settings.windowBounds = petWindow.getBounds();
-  broadcastZoom();
-  return { ok: true, zoom, bounds: petWindow.getBounds() };
+  broadcastPetSize();
+  return { ok: true, petSize, bounds: petWindow.getBounds() };
 }
 
 function recallPetWindow() {
   if (!petWindow || petWindow.isDestroyed()) return false;
   const workArea = screen.getPrimaryDisplay().workArea;
-  const bounds = getCenteredPetBounds(workArea, settings.zoom);
-  petWindow.setBounds(bounds);
+  const bounds = getCenteredPetBounds(workArea, currentPetSizePreset());
+  petWindow.setContentBounds(bounds);
   petWindow.show();
   settings.windowBounds = petWindow.getBounds();
   saveSettings();
@@ -484,10 +546,14 @@ function petTrayItems() {
 }
 
 function buildTrayMenu() {
+  const autoStart = loginItemService?.status ?? {
+    supported: false,
+    registered: false
+  };
   const template = createTrayMenuTemplate({
     monitorPaused: taskSystem?.monitoringPaused ?? false,
-    autoStart: loginItemService?.enabled ?? false,
-    autoStartSupported: loginItemService?.supported ?? false
+    autoStart: autoStart.registered,
+    autoStartSupported: autoStart.supported
   }, {
     openPanel: () => taskSystem?.showPanel(petWindowBounds()),
     quickAddTask: () => taskSystem?.showQuickAdd(petWindowBounds()),
@@ -498,12 +564,10 @@ function buildTrayMenu() {
     recallPet: () => recallPetWindow(),
     setMonitoringPaused: (paused) => taskSystem?.setMonitoringPaused(paused),
     setAutoStart: (enabled) => {
-      try {
-        applyTraySetting({ autoStart: enabled });
-      } catch (error) {
+      void applyTraySetting({ autoStart: enabled }).catch((error) => {
         logger?.warn("Failed to change auto start from Tray", error);
         rebuildTrayMenu();
-      }
+      });
     },
     openSettings: () => taskSystem?.showSettings(),
     quit: () => app.quit()
@@ -534,12 +598,7 @@ function registerIpcHandlers() {
     ...petStatePayload(),
     config: {
       petSize: settings.petSize,
-      visualSize: PET_VISUAL_SIZES[settings.petSize],
-      zoom: clampZoom(settings.zoom),
-      minZoom: MIN_ZOOM,
-      maxZoom: MAX_ZOOM,
-      baseWindowWidth: BASE_WINDOW_WIDTH,
-      baseWindowHeight: BASE_WINDOW_HEIGHT,
+      preset: currentPetSizePreset(),
       debugPetBounds: IS_DEBUG_PET_BOUNDS
     }
   }) : null);
@@ -582,8 +641,44 @@ function registerIpcHandlers() {
   });
 
   ipcMain.on("taskpet:renderer-ready", (event) => {
-    if (!IS_SMOKE_TEST || !petWindow || event.sender !== petWindow.webContents) return;
-    markSmokeReady("pet");
+    if (!petWindow || event.sender !== petWindow.webContents) return;
+    if (IS_SMOKE_TEST) markSmokeReady("pet");
+    if (
+      IS_DEBUG_PET_BOUNDS
+      && DEBUG_PET_BOUNDS_CAPTURE_PATH
+      && !petBoundsCaptureStarted
+    ) {
+      petBoundsCaptureStarted = true;
+      if (IS_DEBUG_PET_WORKING) {
+        sendToPetWindow("taskpet:state-changed", petStatePayload({
+          state: "working",
+          message: "TaskPet working 状态文字",
+          detail: "00:42:18"
+        }));
+      }
+      setTimeout(() => {
+        void Promise.all([
+          petWindow.webContents.capturePage(),
+          petWindow.webContents.executeJavaScript(
+            "({ innerWidth: window.innerWidth, innerHeight: window.innerHeight, devicePixelRatio: window.devicePixelRatio })"
+          )
+        ]).then(([image, viewport]) => {
+          const targetPath = path.resolve(DEBUG_PET_BOUNDS_CAPTURE_PATH);
+          fs.mkdirSync(path.dirname(targetPath), { recursive: true });
+          fs.writeFileSync(targetPath, image.toPNG());
+          console.log(
+            `TaskPet pet bounds captured size=${settings.petSize}`
+            + ` bounds=${JSON.stringify(petWindow.getBounds())}`
+            + ` content=${JSON.stringify(petWindow.getContentBounds())}`
+            + ` viewport=${JSON.stringify(viewport)} path=${targetPath}`
+          );
+          app.exit(0);
+        }).catch((error) => {
+          console.error(`TaskPet pet bounds capture failed: ${error.stack || error.message}`);
+          app.exit(1);
+        });
+      }, 250);
+    }
   });
 }
 
@@ -595,9 +690,14 @@ function configureMacMenuBarMode() {
 
 // ---------- Electron 应用生命周期 ----------
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   configureMacMenuBarMode();
   if (process.platform === "win32") app.setAppUserModelId(APP_ID);
+  if (IS_LOGIN_ITEM_SMOKE_TEST) {
+    await runPackagedLoginItemSmokeTest();
+    app.exit(0);
+    return;
+  }
   const dataPaths = getDataPaths();
   fs.mkdirSync(dataPaths.logsDirectory, { recursive: true });
   fs.mkdirSync(dataPaths.backupDirectory, { recursive: true });
@@ -632,6 +732,7 @@ app.whenReady().then(() => {
     settings: {
       getSnapshot: () => appSettingsSnapshot(),
       update: (input) => applyAppSettings(input),
+      openStartupApps: openWindowsStartupApps,
       openGitHub,
       openLicenses: openThirdPartyLicenses
     },

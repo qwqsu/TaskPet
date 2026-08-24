@@ -2,38 +2,33 @@
  * 透明桌宠 BrowserWindow 的尺寸、缩放和多屏防丢失规则。
  * 安全选项集中在这里，修改窗口外观时不要关闭 contextIsolation。
  */
-const BASE_WINDOW_WIDTH = 240;
-const BASE_WINDOW_HEIGHT = 286;
-const MIN_WINDOW_WIDTH = 120;
-const MIN_WINDOW_HEIGHT = 110;
-const MIN_ZOOM = 0.25;
-const MAX_ZOOM = 2.4;
 const MIN_VISIBLE_EDGE = 48;
 const WINDOW_EDGE_MARGIN = 24;
-
-function clampZoom(value) {
-  const zoom = Number(value);
-  if (!Number.isFinite(zoom)) return 1;
-  return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoom));
-}
 
 function finiteCoordinate(value, fallback) {
   const coordinate = Number(value);
   return Number.isFinite(coordinate) ? Math.round(coordinate) : fallback;
 }
 
-function getPetWindowSize(zoomInput) {
-  const zoom = clampZoom(zoomInput);
+function positiveDimension(value, label) {
+  const dimension = Math.round(Number(value));
+  if (!Number.isFinite(dimension) || dimension <= 0) {
+    throw new TypeError(`${label} must be a positive number`);
+  }
+  return dimension;
+}
+
+function getPetWindowSize(preset) {
   return {
-    width: Math.max(MIN_WINDOW_WIDTH, Math.round(BASE_WINDOW_WIDTH * zoom)),
-    height: Math.max(MIN_WINDOW_HEIGHT, Math.round(BASE_WINDOW_HEIGHT * zoom))
+    width: positiveDimension(preset?.windowWidth, "preset.windowWidth"),
+    height: positiveDimension(preset?.windowHeight, "preset.windowHeight")
   };
 }
 
-function getCenteredPetBounds(workArea, zoomInput) {
+function getCenteredPetBounds(workArea, preset) {
   const normalized = normalizeWorkArea(workArea);
   if (!normalized) throw new TypeError("A valid display work area is required");
-  const size = getPetWindowSize(zoomInput);
+  const size = getPetWindowSize(preset);
   return {
     x: Math.round(normalized.x + (normalized.width - size.width) / 2),
     y: Math.round(normalized.y + (normalized.height - size.height) / 2),
@@ -99,9 +94,8 @@ function createPetWindowOptions(options = {}) {
     throw new TypeError("preloadPath is required");
   }
 
-  const zoom = clampZoom(options.zoom);
   const savedBounds = options.savedBounds || {};
-  const { width, height } = getPetWindowSize(zoom);
+  const { width, height } = getPetWindowSize(options.preset);
   const position = resolveVisiblePosition({
     x: finiteCoordinate(savedBounds.x, 40),
     y: finiteCoordinate(savedBounds.y, 220),
@@ -114,9 +108,11 @@ function createPetWindowOptions(options = {}) {
     title: "TaskPet",
     width,
     height,
+    useContentSize: true,
     x: position.x,
     y: position.y,
     frame: false,
+    thickFrame: false,
     transparent: true,
     backgroundColor: "#00000000",
     resizable: false,
@@ -140,13 +136,6 @@ function createPetWindowOptions(options = {}) {
 }
 
 module.exports = {
-  BASE_WINDOW_HEIGHT,
-  BASE_WINDOW_WIDTH,
-  MIN_WINDOW_HEIGHT,
-  MIN_WINDOW_WIDTH,
-  MAX_ZOOM,
-  MIN_ZOOM,
-  clampZoom,
   createPetWindowOptions,
   getCenteredPetBounds,
   getPetWindowSize,

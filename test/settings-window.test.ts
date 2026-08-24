@@ -30,15 +30,23 @@ test("settings is an independent isolated window with the requested simple secti
   for (const label of ["常规", "桌宠", "数据", "关于", "打开数据目录", "导出备份", "第三方许可证"]) {
     assert.ok(html.includes(label));
   }
-  assert.match(html, /大<\/strong><small>105 × 114/);
-  assert.match(html, /正常<\/strong><small>96 × 104/);
-  assert.match(html, /小<\/strong><small>43 × 52/);
+  assert.match(html, /大<\/strong><small>55% · 105 × 115/);
+  assert.match(html, /正常<\/strong><small>50% · 96 × 104/);
+  assert.match(html, /小<\/strong><small>25% · 48 × 52/);
   assert.match(html, /id="settingsStatus"[^>]*hidden/);
   assert.match(html, /id="leftClickAction"/);
   assert.match(html, /id="doubleClickAction"/);
   assert.match(html, /id="rightClickAction"/);
   assert.doesNotMatch(html, /显示状态气泡|扫描间隔|启动后自动开始监控/);
-  assert.match(renderer, /添加到 Windows 启动项，进入桌面后自动启动 TaskPet/);
+  assert.match(renderer, /进入 Windows 桌面后自动启动 TaskPet/);
+  assert.match(
+    renderer,
+    /TaskPet 已添加到 Windows 启动项，但 Windows 当前可能禁用了该启动项。/
+  );
+  assert.match(renderer, /autoStartToggle\.checked = snapshot\.autoStart\.registered/);
+  assert.match(renderer, /openStartupAppsButton\.hidden = !snapshot\.autoStart\.blockedByWindows/);
+  assert.match(html, /id="openStartupAppsButton"[^>]*hidden/);
+  assert.match(html, /打开 Windows 启动应用设置/);
   assert.match(renderer, /STATUS_VISIBLE_MS = 5_000/);
   assert.match(renderer, /window\.setTimeout\(\(\) => setStatus\(\), STATUS_VISIBLE_MS\)/);
   const styles = fs.readFileSync(
@@ -48,6 +56,7 @@ test("settings is an independent isolated window with the requested simple secti
   assert.match(styles, /\.settings-status\s*\{[^}]*position:\s*fixed/s);
   assert.match(styles, /\.settings-status\[hidden\]\s*\{[^}]*display:\s*none/s);
   assert.match(preload, /contextBridge\.exposeInMainWorld\("taskPetSettings"/);
+  assert.match(preload, /taskpet:settings:open-startup-apps/);
   assert.doesNotMatch(renderer, /better-sqlite3|node:fs|child_process/);
   assert.doesNotMatch(preload, /better-sqlite3|node:fs|child_process/);
 });

@@ -20,8 +20,12 @@ class FakeIpcMain {
 }
 
 const snapshot: AppSettingsSnapshot = {
-  autoStart: false,
-  autoStartSupported: true,
+  autoStart: {
+    supported: true,
+    registered: false,
+    willLaunch: false,
+    blockedByWindows: false
+  },
   petSize: "normal",
   alwaysOnTop: true,
   mouseBindings: {
@@ -41,19 +45,31 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
   const ipc = new FakeIpcMain();
   const trustedSender = {};
   let githubOpens = 0;
+  let startupSettingsOpens = 0;
   const dispose = registerSettingsIpc({
     ipcMain: ipc as unknown as IpcMain,
     isTrustedSender: (event) => event.sender === trustedSender,
     getSettings: () => snapshot,
-    updateSettings: (input) => ({ ...snapshot, ...input }),
+    updateSettings: (input) => ({
+      ...snapshot,
+      petSize: input.petSize ?? snapshot.petSize,
+      alwaysOnTop: input.alwaysOnTop ?? snapshot.alwaysOnTop,
+      mouseBindings: input.mouseBindings ?? snapshot.mouseBindings,
+      activePetKey: input.activePetKey ?? snapshot.activePetKey,
+      autoStart: input.autoStart === undefined
+        ? snapshot.autoStart
+        : { ...snapshot.autoStart, registered: input.autoStart }
+    }),
     openDataDirectory: async () => ({ canceled: false, filePath: snapshot.dataDirectory }),
     exportBackup: async () => ({ canceled: true, filePath: null }),
+    openStartupApps: async () => { startupSettingsOpens += 1; },
     openGitHub: async () => { githubOpens += 1; },
     openLicenses: async () => undefined
   });
 
   const get = ipc.handlers.get(SETTINGS_CHANNELS.get)!;
   const update = ipc.handlers.get(SETTINGS_CHANNELS.update)!;
+  const openStartupApps = ipc.handlers.get(SETTINGS_CHANNELS.openStartupApps)!;
   const openGitHub = ipc.handlers.get(SETTINGS_CHANNELS.openGitHub)!;
 
   assert.deepEqual(await get({ sender: trustedSender }), { ok: true, data: snapshot });
@@ -78,6 +94,18 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
   assert.equal(githubOpens, 0);
   assert.deepEqual(await openGitHub({ sender: trustedSender }), { ok: true, data: undefined });
   assert.equal(githubOpens, 1);
+
+  const startupArbitraryPayload = await openStartupApps(
+    { sender: trustedSender },
+    { url: "ms-settings:privacy" }
+  ) as { ok: boolean };
+  assert.equal(startupArbitraryPayload.ok, false);
+  assert.equal(startupSettingsOpens, 0);
+  assert.deepEqual(await openStartupApps({ sender: trustedSender }), {
+    ok: true,
+    data: undefined
+  });
+  assert.equal(startupSettingsOpens, 1);
 
   dispose();
   assert.equal(ipc.handlers.size, 0);

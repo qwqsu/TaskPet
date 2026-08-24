@@ -4,29 +4,63 @@
  */
 import { z } from "zod";
 
-export const PET_VISUAL_SIZES = Object.freeze({
-  large: Object.freeze({ width: 105, height: 114 }),
-  normal: Object.freeze({ width: 96, height: 104 }),
-  small: Object.freeze({ width: 43, height: 52 })
+export const PET_SIZE_PRESETS = Object.freeze({
+  small: Object.freeze({
+    scale: 0.25,
+    petWidth: 48,
+    petHeight: 52,
+    windowWidth: 60,
+    windowHeight: 72,
+    petTop: 0,
+    statusGap: 2,
+    statusSideMargin: 6,
+    statusPaddingX: 2,
+    statusPaddingY: 0,
+    idleFontSize: 8,
+    statusMessageFontSize: 5,
+    statusDetailFontSize: 7
+  }),
+  normal: Object.freeze({
+    scale: 0.5,
+    petWidth: 96,
+    petHeight: 104,
+    windowWidth: 120,
+    windowHeight: 143,
+    petTop: 0,
+    statusGap: 5,
+    statusSideMargin: 12,
+    statusPaddingX: 5,
+    statusPaddingY: 2,
+    idleFontSize: 13,
+    statusMessageFontSize: 10,
+    statusDetailFontSize: 13
+  }),
+  large: Object.freeze({
+    scale: 0.55,
+    petWidth: 105,
+    petHeight: 115,
+    windowWidth: 132,
+    windowHeight: 157,
+    petTop: 0,
+    statusGap: 5,
+    statusSideMargin: 12,
+    statusPaddingX: 6,
+    statusPaddingY: 2,
+    idleFontSize: 14,
+    statusMessageFontSize: 10,
+    statusDetailFontSize: 14
+  })
 } as const);
 
-export type PetSize = keyof typeof PET_VISUAL_SIZES;
+export type PetSize = keyof typeof PET_SIZE_PRESETS;
+export type PetSizePreset = typeof PET_SIZE_PRESETS[PetSize];
 
-/**
- * 透明窗口外壳的内部缩放档位。视觉本体使用 PET_VISUAL_SIZES 精确控制，
- * 小档窗口仍保留最小状态文字空间，因此两者不应再视为同一个尺寸。
- */
-export const PET_SIZE_ZOOMS: Readonly<Record<PetSize, number>> = Object.freeze({
-  large: 0.55,
-  normal: 0.5,
-  small: 0.25
-});
-
-const LEGACY_PET_SIZE_ZOOMS: Readonly<Record<PetSize, number>> = Object.freeze({
-  large: 1.25,
-  normal: 1,
-  small: 0.5
-});
+export interface AutoStartStatus {
+  supported: boolean;
+  registered: boolean;
+  willLaunch: boolean | null;
+  blockedByWindows: boolean;
+}
 
 export const PET_MOUSE_ACTIONS = Object.freeze([
   "open-panel",
@@ -60,8 +94,7 @@ export interface PetSettingsOption {
 }
 
 export interface AppSettingsSnapshot {
-  autoStart: boolean;
-  autoStartSupported: boolean;
+  autoStart: AutoStartStatus;
   petSize: PetSize;
   alwaysOnTop: boolean;
   mouseBindings: PetMouseBindings;
@@ -99,19 +132,18 @@ export const UpdateAppSettingsInputSchema = z.object({
 export type UpdateAppSettingsInput = z.input<typeof UpdateAppSettingsInputSchema>;
 
 function closestPetSize(
-  value: unknown,
-  presets: Readonly<Record<PetSize, number>>
+  value: unknown
 ): PetSize {
   const zoom = Number(value);
   if (!Number.isFinite(zoom)) return "normal";
 
   let closest: PetSize = "normal";
   let distance = Number.POSITIVE_INFINITY;
-  for (const [size, presetZoom] of Object.entries(presets) as Array<[
+  for (const [size, preset] of Object.entries(PET_SIZE_PRESETS) as Array<[
     PetSize,
-    number
+    PetSizePreset
   ]>) {
-    const nextDistance = Math.abs(zoom - presetZoom);
+    const nextDistance = Math.abs(zoom - preset.scale);
     if (nextDistance < distance) {
       closest = size;
       distance = nextDistance;
@@ -120,14 +152,10 @@ function closestPetSize(
   return closest;
 }
 
-export function petSizeFromZoom(value: unknown): PetSize {
-  return closestPetSize(value, PET_SIZE_ZOOMS);
-}
-
 export function normalizePetSize(value: unknown, legacyZoom?: unknown): PetSize {
   if (value === "large" || value === "normal" || value === "small") return value;
-  // P4 早期版本只保存 1.25 / 1 / 0.5，迁移时必须按旧档位解释。
-  return closestPetSize(legacyZoom, LEGACY_PET_SIZE_ZOOMS);
+  // 旧版本只保存 zoom；新代码在这里识别一次，之后只使用 PetSize preset。
+  return closestPetSize(legacyZoom);
 }
 
 export function normalizePetMouseBindings(value: unknown): PetMouseBindings {

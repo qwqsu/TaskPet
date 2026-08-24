@@ -61,7 +61,8 @@ export interface TaskSystemLogger {
 
 export interface TaskSystemSettingsAdapter {
   getSnapshot(): AppSettingsSnapshot;
-  update(input: UpdateAppSettingsInput): AppSettingsSnapshot;
+  update(input: UpdateAppSettingsInput): AppSettingsSnapshot | Promise<AppSettingsSnapshot>;
+  openStartupApps(): Promise<void>;
   openGitHub(): Promise<void>;
   openLicenses(): Promise<void>;
 }
@@ -206,13 +207,14 @@ export class TaskSystem {
       ipcMain,
       isTrustedSender: (event) => this.isSettingsSender(event),
       getSettings: () => this.options.settings.getSnapshot(),
-      updateSettings: (input) => {
-        const snapshot = this.options.settings.update(input);
+      updateSettings: async (input) => {
+        const snapshot = await this.options.settings.update(input);
         this.broadcastSettings(snapshot);
         return snapshot;
       },
       openDataDirectory: () => this.dataService.openDataDirectory(),
       exportBackup: () => this.dataService.exportBackup(),
+      openStartupApps: () => this.options.settings.openStartupApps(),
       openGitHub: () => this.options.settings.openGitHub(),
       openLicenses: () => this.options.settings.openLicenses()
     });
