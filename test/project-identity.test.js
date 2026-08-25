@@ -25,6 +25,7 @@ test("package and builder use the TaskPet v1.0 release identity", () => {
   assert.match(builder, /^  - build\/\*\*$/m);
   assert.ok(builder.includes("  - '!src/**/*.ts'"));
   assert.ok(builder.includes("  - '!src/assets/pets/**'"));
+  assert.doesNotMatch(builder, /README\.zh-CN\.md/);
   assert.match(builder, /^electronLanguages:$/m);
   assert.match(builder, /^  - en-US$/m);
   assert.match(builder, /^  - zh-CN$/m);
@@ -46,6 +47,20 @@ test("package and builder use the TaskPet v1.0 release identity", () => {
   assert.equal(logo.readUInt32BE(16), logo.readUInt32BE(20));
   assert.ok(logo.readUInt32BE(16) >= 512);
   assert.ok([2, 6].includes(logo[25]), "TaskPet icon should be an RGB or RGBA PNG");
+
+  for (const privateDevelopmentEntry of [
+    "AGENTS.md",
+    "DESIGN.md",
+    "CODE_GUIDE.md",
+    "README.zh-CN.md",
+    "media"
+  ]) {
+    assert.equal(
+      fs.existsSync(path.join(root, privateDevelopmentEntry)),
+      false,
+      `${privateDevelopmentEntry} should not be part of the public release tree`
+    );
+  }
 
   const main = fs.readFileSync(path.join(root, "src", "main.js"), "utf8");
   const settingsRenderer = fs.readFileSync(

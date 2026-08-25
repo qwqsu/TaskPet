@@ -91,8 +91,6 @@ Electron Main Process
 
 所有文件系统、SQLite、系统进程和窗口能力都留在 Main Process。Renderer 保持 `contextIsolation: true`、`nodeIntegration: false`，任务面板和设置窗口还启用了 sandbox；页面只能调用 Preload 暴露的固定 IPC。
 
-更适合初学者阅读的源码导览见 [CODE_GUIDE.md](CODE_GUIDE.md)。
-
 ## 任务类型
 
 | 类型 | 行为 |
@@ -126,7 +124,7 @@ Electron Main Process
 
 ## 桌宠系统
 
-当前宠物目录按仓库现状只提供一个默认桌宠，不会在构建时恢复已删除资源。TaskPet 使用六个基础状态：
+发布包会携带 `src/assets/pets` 当前目录中的宠物资源，不会在构建时恢复已删除资源，也不会在界面中区分资源来源。TaskPet 使用六个基础状态：
 
 ```text
 idle / working / done / attention / drag-left / drag-right
@@ -179,10 +177,10 @@ ZIP 最大 50 MB。导入器会校验文件路径、清单、图集尺寸和透�
 
 默认桌宠与用户导入的桌宠使用同一个目录，不再按来源分开，也不会在界面中显示来源字样。
 
-当前开发仓库中的目录是：
+开发仓库中的目录是：
 
 ```text
-F:\vibeCoding\TaskPet\src\assets\pets\<pet-id>\
+src\assets\pets\<pet-id>\
 ├── pet.json
 └── spritesheet.webp
 ```
@@ -219,7 +217,7 @@ Windows 默认数据目录为：
 
 ## 安装与使用
 
-1. 下载并运行 `TaskPet-1.0.0-win-x64.exe`。
+1. 下载并运行 `TaskPet-1.0.0-win32-x64.exe`。
 2. 选择安装目录并完成安装。
 3. 从桌宠或 Tray 打开任务面板。
 4. 添加任务；需要自动计时时，选择并绑定目标 exe。
@@ -263,7 +261,7 @@ npm run build:win
 构建产物位于：
 
 ```text
-dist\TaskPet-1.0.0-win-x64.exe
+dist\TaskPet-1.0.0-win32-x64.exe
 dist\win-unpacked\
 ```
 
@@ -282,8 +280,6 @@ TaskPet/
 │   └── assets/                  # Logo 与统一宠物目录
 ├── test/                        # 单元与结构回归测试
 ├── scripts/                     # 测试、性能与桌宠包 smoke
-├── DESIGN.md                    # 产品与架构设计依据
-├── CODE_GUIDE.md                # 中文源码学习指南
 ├── electron-builder.yml         # 发布打包配置
 └── package.json                 # 脚本、依赖和唯一版本来源
 ```

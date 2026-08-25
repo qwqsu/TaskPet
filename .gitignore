@@ -1,7 +1,14 @@
 node_modules/
 build/
 .test-build/
+.taskpet-pet-path-build/
 dist/
 out/
-app.log
+*.log
+*.sqlite
+*.sqlite3
+*.db
+.env
+.env.*
+!.env.example
 *.tmp

@@ -13,7 +13,6 @@ files:
   - package.json
   - LICENSE
   - README.md
-  - README.zh-CN.md
   - '!**/.DS_Store'
   - '!**/*.map'
   - '!**/test/**'
