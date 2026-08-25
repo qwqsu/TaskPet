@@ -27,7 +27,7 @@ SQLite / 文件系统 / Win32 API / Electron BrowserWindow
 入口是 `src/main.js`：
 
 1. Electron 读取应用名、运行参数和本地设置。
-2. 从内置目录与用户桌宠目录发现宠物。
+2. 从统一的 `src/assets/pets` 宠物目录发现默认和用户导入的宠物。
 3. 创建透明桌宠窗口并注册桌宠 IPC。
 4. 创建 `TaskSystem`，打开 SQLite 并组装任务、监控和计时服务。
 5. 创建 Tray。
@@ -42,7 +42,7 @@ SQLite / 文件系统 / Win32 API / Electron BrowserWindow
 - `src/main.js`：应用总入口；负责桌宠窗口、Tray、设置快照、宠物导入入口和生命周期。
 - `src/pet-window-options.js`：透明桌宠窗口的尺寸、安全选项和多屏防丢失。
 - `src/pet-window-drag.js`：使用主进程中的系统鼠标坐标计算窗口拖拽。
-- `src/pet-library.js`：读取内置与用户目录中的 `pet.json`，生成安全图集 URL。
+- `src/pet-library.js`：解析开发版与发布版的统一宠物目录，读取其中的 `pet.json`，生成安全图集 URL。
 - `src/pet-state.js`：管理最终桌宠状态；拖拽结束后恢复业务状态。
 - `src/app-logger.js`：低频本地日志与简单轮换，不记录完整进程快照。
 
@@ -153,17 +153,18 @@ C:\Users\<用户名>\AppData\Roaming\TaskPet\
 
 设置页显示的“数据目录”就是主进程快照中的这个路径。
 
-### 用户导入的桌宠
+### 默认和用户导入的桌宠
 
-`src/main.js` 中 `CODEX_HOME` 默认是 `path.join(os.homedir(), ".codex")`，`getPetStorageInfo()` 再交给 `src/pet-library.js` 拼出 `pets`：
+`src/main.js` 的 `getPetStorageInfo()` 会调用 `src/pet-library.js` 中的 `resolvePetStorageRoot()`。默认桌宠与用户导入的桌宠共用一个根目录和一套 `pets:<id>` 键，不再区分来源：
 
 ```text
-C:\Users\<用户名>\.codex\pets\<pet-id>\
+开发版：F:\vibeCoding\TaskPet\src\assets\pets\<pet-id>\
+发布版：<安装目录>\resources\src\assets\pets\<pet-id>\
 ```
 
-如设置环境变量 `CODEX_HOME`，根目录会随之改变。导入服务先写 `.taskpet-import-*` 临时目录，校验成功后再原子重命名为 `<pet-id>`；失败会清理临时目录。
+开发版路径跟随仓库位置，仓库内的相对路径始终是 `src/assets/pets`。发布版的 `app.asar` 只读，所以 `electron-builder.yml` 会从 asar 中排除宠物目录，再通过 `extraResources` 把它复制到可直接访问的 `resources/src/assets/pets`。
 
-内置桌宠位于 `src/assets/pets/`，打包后在应用资源内，只读且不等同于用户导入目录。
+导入服务会先在同一宠物根目录写入 `.taskpet-import-*` 临时目录，校验成功后再原子重命名为 `<pet-id>`；失败会清理临时目录。安装目录必须允许当前 Windows 用户写入，否则导入会明确失败，不会回退到 `.codex` 或其他隐藏位置。
 
 ## 8. aboutVersion 为什么会显示版本
 
@@ -190,7 +191,7 @@ src/renderer/settings/settings.ts
 
 1. 限制 ZIP 大小、条目数和解压后总大小。
 2. 拒绝 ZIP64、加密、分卷、符号链接和路径穿越。
-3. 校验 `pet.json` 的 id、显示名、图集路径和帧结构。
+3. 校验 `pet.json` 的 id、显示名、图集路径和帧结构；id 使用原生 Unicode 正则支持大小写英文、数字、`-`、`_` 和汉字，同时拒绝 Windows 保留名称。
 4. 校验 PNG/WebP 文件头、图集尺寸和透明背景。
 5. 只复制清单与图集到临时目录。
 6. 全部成功后再改名为正式目录。

@@ -6,8 +6,8 @@ const path = require("node:path");
 const {
   DEFAULT_PET_FRAME,
   discoverPets,
-  getActivePetsRoot,
   normalizePetFrame,
+  resolvePetStorageRoot,
   sanitizeId,
   toPetPayload
 } = require("../src/pet-library");
@@ -32,8 +32,8 @@ function writePet(root, id, manifestPatch = {}) {
 
 test("discoverPets reads only the provided pets root", () => {
   const root = tempDir();
-  const petsRoot = path.join(root, ".codex", "pets");
-  const runsRoot = path.join(root, ".codex", "pet-runs");
+  const petsRoot = path.join(root, "src", "assets", "pets");
+  const runsRoot = path.join(root, "pet-runs");
   writePet(petsRoot, "boba");
   writePet(path.join(runsRoot, "run-1", "final"), "generated");
 
@@ -41,60 +41,56 @@ test("discoverPets reads only the provided pets root", () => {
   assert.equal(pets.length, 1);
   assert.equal(pets[0].id, "boba");
   assert.equal(pets[0].source, "pets");
+  assert.equal(pets[0].key, "pets:boba");
+  assert.equal("sourceLabel" in pets[0], false);
 });
 
-test("discoverPets includes bundled pets with stable keys", () => {
+test("default and imported pets share one directory and key namespace", () => {
   const root = tempDir();
-  const bundledPetsRoot = path.join(root, "app", "assets", "pets");
-  const petsRoot = path.join(root, ".codex", "pets");
-  writePet(bundledPetsRoot, "starter");
+  const petsRoot = path.join(root, "src", "assets", "pets");
   writePet(petsRoot, "starter");
+  writePet(petsRoot, "custom");
 
-  const pets = discoverPets(petsRoot, { bundledPetsRoot });
+  const pets = discoverPets(petsRoot);
 
   assert.equal(pets.length, 2);
-  assert.deepEqual(pets.map((pet) => pet.source), ["builtin", "pets"]);
-  assert.deepEqual(pets.map((pet) => pet.key), ["builtin:starter", "pets:starter"]);
+  assert.deepEqual(pets.map((pet) => pet.source), ["pets", "pets"]);
+  assert.deepEqual(pets.map((pet) => pet.key), ["pets:custom", "pets:starter"]);
 });
 
-test("getActivePetsRoot defaults to .codex pets", () => {
+test("development pet storage is exactly the source assets pets directory", () => {
   const root = tempDir();
-  const codexHome = path.join(root, ".codex");
+  const developmentPetsRoot = path.join(root, "src", "assets", "pets");
 
-  assert.equal(getActivePetsRoot({ codexHome, settings: {} }).petsRoot, path.join(codexHome, "pets"));
+  assert.equal(resolvePetStorageRoot({
+    isPackaged: false,
+    resourcesPath: path.join(root, "resources"),
+    developmentPetsRoot
+  }), path.resolve(developmentPetsRoot));
 });
 
-test("getActivePetsRoot supports a configured custom folder", () => {
+test("packaged pet storage stays writable outside app.asar", () => {
   const root = tempDir();
-  const codexHome = path.join(root, ".codex");
-  const customPetsDir = path.join(root, "custom-pets");
+  const resourcesPath = path.join(root, "TaskPet", "resources");
 
-  const storage = getActivePetsRoot({
-    codexHome,
-    settings: {
-      petStorage: "custom",
-      customPetsDir
-    }
-  });
-
-  assert.equal(storage.petStorage, "custom");
-  assert.equal(storage.petsRoot, customPetsDir);
-  assert.deepEqual(storage.options.map((option) => option.id), ["codex", "custom"]);
+  assert.equal(resolvePetStorageRoot({
+    isPackaged: true,
+    resourcesPath,
+    developmentPetsRoot: path.join(root, "source-pets")
+  }), path.join(resourcesPath, "src", "assets", "pets"));
 });
 
-test("getActivePetsRoot falls back to .codex when custom folder is missing", () => {
-  const root = tempDir();
-  const codexHome = path.join(root, ".codex");
-
-  const storage = getActivePetsRoot({
-    codexHome,
-    settings: {
-      petStorage: "custom"
-    }
-  });
-
-  assert.equal(storage.petStorage, "codex");
-  assert.equal(storage.petsRoot, path.join(codexHome, "pets"));
+test("pet storage path resolver rejects a missing active root", () => {
+  assert.throws(() => resolvePetStorageRoot({
+    isPackaged: false,
+    resourcesPath: "",
+    developmentPetsRoot: ""
+  }), /developmentPetsRoot/);
+  assert.throws(() => resolvePetStorageRoot({
+    isPackaged: true,
+    resourcesPath: "",
+    developmentPetsRoot: "C:\\TaskPet\\src\\assets\\pets"
+  }), /resourcesPath/);
 });
 
 test("sanitizeId keeps ids filesystem-safe", () => {
@@ -114,7 +110,7 @@ test("Codex-compatible frame geometry is the default", () => {
 
 test("pet manifests can provide explicit frame geometry", () => {
   const root = tempDir();
-  const petsRoot = path.join(root, ".codex", "pets");
+  const petsRoot = path.join(root, "src", "assets", "pets");
   writePet(petsRoot, "wide", {
     frame: { width: 96, height: 104, columns: 8, rows: 9 }
   });

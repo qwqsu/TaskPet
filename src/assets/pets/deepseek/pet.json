@@ -1,0 +1,12 @@
+{
+  "id": "deepseek",
+  "displayName": "deepseek酱",
+  "description": "基于 DeepSeek 娘化三视图的蓝发鲸尾 Q 版女仆动态宠物.",
+  "spritesheetPath": "spritesheet.webp",
+  "frame": {
+    "width": 192,
+    "height": 208,
+    "columns": 8,
+    "rows": 9
+  }
+}

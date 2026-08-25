@@ -23,6 +23,10 @@ const MAX_TOTAL_UNCOMPRESSED_BYTES = 100 * 1024 * 1024;
 const MAX_MANIFEST_BYTES = 64 * 1024;
 const MAX_SPRITESHEET_BYTES = 64 * 1024 * 1024;
 const SUPPORTED_SPRITESHEET_EXTENSIONS = new Set([".png", ".webp"]);
+// JavaScript 自带 Unicode 字符属性；支持汉字不需要打包字库或增加第三方依赖。
+const PET_ID_PATTERN = /^[\p{Script=Han}A-Za-z0-9_-]+$/u;
+// 这些名称即使带有不同大小写，在 Windows 上也不能作为普通文件夹名。
+const WINDOWS_RESERVED_PET_ID_PATTERN = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])$/i;
 const END_OF_CENTRAL_DIRECTORY_SIGNATURE = 0x06054b50;
 const CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
 const LOCAL_FILE_HEADER_SIGNATURE = 0x04034b50;
@@ -41,8 +45,12 @@ const PetPackageManifestSchema = z.object({
     .min(1, "宠物包缺少 id")
     .max(48, "宠物 ID 最多 48 个字符")
     .regex(
-      /^[a-z0-9](?:[a-z0-9_-]{0,47})$/,
-      "宠物 ID 只能使用小写英文字母、数字、连字符和下划线"
+      PET_ID_PATTERN,
+      "宠物 ID 只能使用大小写英文字母、数字、连字符、下划线和汉字"
+    )
+    .refine(
+      (id) => !WINDOWS_RESERVED_PET_ID_PATTERN.test(id),
+      "宠物 ID 不能使用 Windows 保留名称"
     ),
   displayName: z.string()
     .trim()

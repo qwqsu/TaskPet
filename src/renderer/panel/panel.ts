@@ -399,7 +399,7 @@ function renderTimeStats(snapshot: TimeStatsSnapshot): void {
   statsTotal.textContent = formatDuration(snapshot.totalSec);
   const from = new Date(snapshot.from);
   const to = new Date(snapshot.to);
-  statsRange.textContent = `${formatStatsBoundary(from)} 至 ${formatStatsBoundary(to)} · 实际运行时间`;
+  statsRange.textContent = `${formatStatsBoundary(from)} 至 ${formatStatsBoundary(to)}`;
 
   if (snapshot.entries.length === 0) {
     statsList.replaceChildren(emptyState(

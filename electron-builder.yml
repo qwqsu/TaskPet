@@ -20,6 +20,8 @@ files:
   - '!**/.github/**'
   - '!scripts/**'
   - '!src/**/*.ts'
+  # 宠物目录需要接收用户导入，不能放进只读的 app.asar。
+  - '!src/assets/pets/**'
   - '!node_modules/**/*.d.ts'
   - '!node_modules/**/*.md'
   - '!node_modules/**/*.ts'
@@ -47,6 +49,8 @@ electronLanguages:
 extraResources:
   - from: THIRD_PARTY_LICENSES.txt
     to: THIRD_PARTY_LICENSES.txt
+  - from: src/assets/pets
+    to: src/assets/pets
 
 win:
   executableName: TaskPet

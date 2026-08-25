@@ -126,7 +126,7 @@ Electron Main Process
 
 ## 桌宠系统
 
-当前发布包按仓库现状只内置一个默认桌宠，不会在构建时恢复已删除资源。TaskPet 使用六个基础状态：
+当前宠物目录按仓库现状只提供一个默认桌宠，不会在构建时恢复已删除资源。TaskPet 使用六个基础状态：
 
 ```text
 idle / working / done / attention / drag-left / drag-right
@@ -173,17 +173,29 @@ pet.zip
 
 ZIP 最大 50 MB。导入器会校验文件路径、清单、图集尺寸和透明背景，并只保存 `pet.json` 与它引用的 PNG/WebP 图集。
 
+`pet.json` 的 `id` 最多 48 个字符，支持大小写英文字母、数字、连字符、下划线和汉字，例如 `TaskPet-桌宠_01`。汉字校验使用 JavaScript 原生 Unicode 正则，不需要额外字库，不会增加安装包体积。
+
 ### 用户桌宠保存位置
 
-Windows 默认位置：
+默认桌宠与用户导入的桌宠使用同一个目录，不再按来源分开，也不会在界面中显示来源字样。
+
+当前开发仓库中的目录是：
 
 ```text
-C:\Users\<用户名>\.codex\pets\<pet-id>\
+F:\vibeCoding\TaskPet\src\assets\pets\<pet-id>\
 ├── pet.json
 └── spritesheet.webp
 ```
 
-也就是 `%USERPROFILE%\.codex\pets`。如果启动 TaskPet 时设置了 `CODEX_HOME` 环境变量，则保存到 `%CODEX_HOME%\pets`。这个目录与任务数据库目录不同。
+也就是仓库相对路径 `src\assets\pets`。ZIP、文件选择和文件夹导入都会写入这里。
+
+发布版不能写入只读的 `app.asar`，因此构建会把同一目录复制到安装资源目录：
+
+```text
+<TaskPet 安装目录>\resources\src\assets\pets\<pet-id>\
+```
+
+发布版导入也写入这个目录。安装 TaskPet 时应选择当前 Windows 用户有写入权限的位置；导入失败时应用会显示错误，不会悄悄改存到用户目录或系统盘。
 
 ## 数据与隐私
 
@@ -267,7 +279,7 @@ TaskPet/
 │   ├── preload/                 # 面板与设置的安全桥
 │   ├── renderer/                # 桌宠、任务面板和设置界面
 │   ├── shared/                  # 前后端共享类型与 Zod 契约
-│   └── assets/                  # Logo 与内置桌宠
+│   └── assets/                  # Logo 与统一宠物目录
 ├── test/                        # 单元与结构回归测试
 ├── scripts/                     # 测试、性能与桌宠包 smoke
 ├── DESIGN.md                    # 产品与架构设计依据
@@ -286,7 +298,7 @@ TaskPet/
 
 TaskPet 代码使用 [MIT License](LICENSE)。第三方依赖声明见 [THIRD_PARTY_LICENSES.txt](THIRD_PARTY_LICENSES.txt)。
 
-自定义或内置桌宠素材可能有各自的版权与使用条款；导入和分发前请确认你拥有相应授权。
+自定义或默认桌宠素材可能有各自的版权与使用条款；导入和分发前请确认你拥有相应授权。
 
 ## 致谢 / 第三方项目
 

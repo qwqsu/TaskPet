@@ -1,6 +1,6 @@
 /**
  * Codex-compatible 宠物包加载器。
- * 从内置目录和用户目录读取 pet.json，校验 spritesheet 仍位于宠物包内部，再生成安全的 file URL。
+ * 默认宠物和用户导入宠物使用同一个目录；这里负责解析目录、校验图集路径并生成安全的 file URL。
  */
 const fs = require("node:fs");
 const path = require("node:path");
@@ -13,15 +13,7 @@ const DEFAULT_PET_FRAME = Object.freeze({
   rows: 9
 });
 
-const STORAGE_LABELS = {
-  codex: ".codex 宠物",
-  custom: "自定义文件夹"
-};
-
-const PET_SOURCE_LABELS = {
-  builtin: "内置",
-  pets: "目录"
-};
+const PACKAGED_PETS_PATH = Object.freeze(["src", "assets", "pets"]);
 
 function readJson(filePath) {
   try {
@@ -72,39 +64,22 @@ function resolveSpritesheetPath(directory, manifestPath) {
   return spritesheetPath;
 }
 
-function getPetStorageRoots({ codexHome, customPetsDir }) {
-  return {
-    codexPetsRoot: path.join(codexHome, "pets"),
-    customPetsRoot: customPetsDir ? path.resolve(customPetsDir) : ""
-  };
+function resolvePetStorageRoot({ isPackaged, resourcesPath, developmentPetsRoot }) {
+  // 开发态直接使用仓库的 src/assets/pets；发布版对应到 asar 外的 resources 目录，
+  // 因为 app.asar 内文件只读，不能接收用户导入。
+  if (isPackaged) {
+    if (typeof resourcesPath !== "string" || resourcesPath.length === 0) {
+      throw new TypeError("resourcesPath is required for a packaged pet directory");
+    }
+    return path.resolve(resourcesPath, ...PACKAGED_PETS_PATH);
+  }
+  if (typeof developmentPetsRoot !== "string" || developmentPetsRoot.length === 0) {
+    throw new TypeError("developmentPetsRoot is required");
+  }
+  return path.resolve(developmentPetsRoot);
 }
 
-function normalizePetStorage(value, roots) {
-  if (value === "custom" && roots.customPetsRoot) return "custom";
-  return "codex";
-}
-
-function getActivePetsRoot({ codexHome, settings = {} }) {
-  const roots = getPetStorageRoots({
-    codexHome,
-    customPetsDir: settings.customPetsDir
-  });
-  const petStorage = normalizePetStorage(settings.petStorage, roots);
-  const petsRoot = petStorage === "custom" ? roots.customPetsRoot : roots.codexPetsRoot;
-
-  return {
-    petStorage,
-    petsRoot,
-    ...roots,
-    options: [
-      { id: "codex", label: STORAGE_LABELS.codex, path: roots.codexPetsRoot },
-      { id: "custom", label: STORAGE_LABELS.custom, path: roots.customPetsRoot }
-    ]
-  };
-}
-
-function discoverPetsInDirectory(petsRoot, source = "pets", onError = () => {}) {
-  const prefix = source === "builtin" ? "builtin" : "pets";
+function discoverPetsInDirectory(petsRoot, onError = () => {}) {
   return listDirectories(petsRoot)
     .map((dir) => {
       const manifest = readJson(path.join(dir, "pet.json")) || {};
@@ -118,11 +93,10 @@ function discoverPetsInDirectory(petsRoot, source = "pets", onError = () => {}) 
 
       return {
         id,
-        key: `${prefix}:${id}`,
+        key: `pets:${id}`,
         displayName: String(manifest.displayName || id),
         description: String(manifest.description || ""),
-        source,
-        sourceLabel: PET_SOURCE_LABELS[source] || source,
+        source: "pets",
         root: dir,
         spritesheetPath,
         frame: normalizePetFrame(manifest.frame)
@@ -132,14 +106,7 @@ function discoverPetsInDirectory(petsRoot, source = "pets", onError = () => {}) 
 }
 
 function discoverPets(petsRoot, options = {}) {
-  // 内置宠物排在前面，保证用户目录为空时仍有可显示的默认资源。
-  const bundledPets = options.bundledPetsRoot
-    ? discoverPetsInDirectory(options.bundledPetsRoot, "builtin", options.onError)
-    : [];
-  return [
-    ...bundledPets,
-    ...discoverPetsInDirectory(petsRoot, "pets", options.onError)
-  ];
+  return discoverPetsInDirectory(petsRoot, options.onError);
 }
 
 function toPetPayload(pet) {
@@ -151,7 +118,6 @@ function toPetPayload(pet) {
     displayName: pet.displayName,
     description: pet.description,
     source: pet.source,
-    sourceLabel: pet.sourceLabel,
     spritesheetUrl: pathToFileURL(pet.spritesheetPath).toString(),
     frame: { ...pet.frame }
   };
@@ -160,8 +126,8 @@ function toPetPayload(pet) {
 module.exports = {
   DEFAULT_PET_FRAME,
   discoverPets,
-  getActivePetsRoot,
   normalizePetFrame,
+  resolvePetStorageRoot,
   sanitizeId,
   toPetPayload
 };

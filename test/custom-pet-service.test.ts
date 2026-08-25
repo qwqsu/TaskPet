@@ -174,6 +174,60 @@ test("pet package installs a deflated ZIP atomically and fills the default frame
   );
 });
 
+test("pet IDs support letter case, numbers, separators and Chinese characters", () => {
+  const root = tempDir();
+  const petsRoot = path.join(root, "pets");
+  const ids = ["Pet_ABC-123", "中文宠物_01", "-TaskPet-桌宠_A9", "_LeadingPet_9"];
+
+  for (const id of ids) {
+    const installed = installPetPackageFromZip({
+      petsRoot,
+      archive: createZip([
+        { name: "pet.json", data: manifest(id) },
+        { name: "spritesheet.webp", data: Buffer.from(`sprite-${id}`) }
+      ])
+    });
+
+    assert.equal(installed.id, id);
+    assert.equal(installed.key, `pets:${id}`);
+    assert.equal(path.basename(installed.directory), id);
+    assert.equal(
+      JSON.parse(fs.readFileSync(path.join(installed.directory, "pet.json"), "utf8")).id,
+      id
+    );
+  }
+});
+
+test("pet IDs reject punctuation, spaces, emoji and Windows reserved names", () => {
+  const root = tempDir();
+  const petsRoot = path.join(root, "pets");
+  const invalidIds = ["pet name", "pet.name", "pet/name", "pet😀"];
+
+  for (const id of invalidIds) {
+    assert.throws(
+      () => installPetPackageFromZip({
+        petsRoot,
+        archive: createZip([
+          { name: "pet.json", data: manifest(id) },
+          { name: "spritesheet.webp", data: Buffer.from("sprite") }
+        ])
+      }),
+      /只能使用大小写英文字母、数字、连字符、下划线和汉字/
+    );
+  }
+
+  assert.throws(
+    () => installPetPackageFromZip({
+      petsRoot,
+      archive: createZip([
+        { name: "pet.json", data: manifest("CON") },
+        { name: "spritesheet.webp", data: Buffer.from("sprite") }
+      ])
+    }),
+    /Windows 保留名称/
+  );
+});
+
 test("pet package imports stored ZIP files from one top-level folder", () => {
   const root = tempDir();
   const zipPath = path.join(root, "nested-pet.zip");

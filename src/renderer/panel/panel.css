@@ -122,7 +122,7 @@ h2 {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 4px;
-  margin: 24px 0 18px;
+  margin: 24px 0 1px;
   padding: 4px;
   border: 1px solid var(--line);
   border-radius: 14px;
@@ -323,7 +323,7 @@ h2 {
 .stats-total-card small { color: rgba(255, 255, 255, 0.76); }
 .stats-total-card span { font-size: 12px; font-weight: 700; }
 .stats-total-card strong { font-size: 28px; font-variant-numeric: tabular-nums; }
-.stats-total-card small { font-size: 10px; }
+.stats-total-card small { font-size: 12px; }
 
 .stats-list {
   display: grid;
