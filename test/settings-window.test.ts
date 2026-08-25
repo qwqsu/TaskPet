@@ -82,6 +82,7 @@ test("settings is an independent isolated window with the requested simple secti
   assert.match(renderer, /new Uint8Array/);
   assert.match(renderer, /MAX_PET_ZIP_BYTES = 50 \* 1024 \* 1024/);
   assert.match(renderer, /settingsApi\.importPetFolder\(\)/);
+  assert.doesNotMatch(renderer, /sourceLabel|内置/);
   assert.match(main, /https:\/\/petdex\.dev\/zh\/create/);
   assert.match(taskSystem, /toggleSettings\(\): void/);
   assert.match(taskSystem, /settingsWindow\.close\(\)/);

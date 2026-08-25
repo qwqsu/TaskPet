@@ -8,7 +8,7 @@ const os = require("node:os");
 const path = require("node:path");
 const {
   discoverPets: discoverPetsInRoot,
-  getActivePetsRoot,
+  resolvePetStorageRoot,
   toPetPayload
 } = require("./pet-library");
 const { PET_ACTIONS, PetStateController } = require("./pet-state");
@@ -42,11 +42,10 @@ const GITHUB_URL = "https://github.com/qwqsu/TaskPet";
 const PETDEX_URL = "https://petdex.dev/zh";
 const PETDEX_CREATE_URL = "https://petdex.dev/zh/create";
 const APP_STARTED_AT_MS = Date.now();
-// 用户导入的宠物与任务数据库彼此独立：宠物默认进入 ~/.codex/pets，
-// 数据库和 settings.json 则由 Electron 的 userData 目录管理。
-const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 const LOGO_PATH = path.join(__dirname, "assets", "logo.png");
-const BUNDLED_PETS_ROOT = path.join(__dirname, "assets", "pets");
+// 开发态的默认宠物和用户导入宠物都放在仓库这个目录；打包后由
+// resolvePetStorageRoot 映射到 asar 外的 resources/src/assets/pets。
+const DEVELOPMENT_PETS_ROOT = path.join(__dirname, "assets", "pets");
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
 const IS_LOGIN_ITEM_SMOKE_TEST = process.argv.includes("--smoke-test-login-item");
 const IS_NATIVE_PROCESS_SMOKE_TEST = process.argv.includes("--smoke-test-native-process");
@@ -309,7 +308,13 @@ async function runPackagedNativeProcessSmokeTest() {
 // ---------- 宠物资源发现与状态广播 ----------
 
 function getPetStorageInfo() {
-  return getActivePetsRoot({ codexHome: CODEX_HOME, settings: {} });
+  return {
+    petsRoot: resolvePetStorageRoot({
+      isPackaged: app.isPackaged,
+      resourcesPath: process.resourcesPath,
+      developmentPetsRoot: DEVELOPMENT_PETS_ROOT
+    })
+  };
 }
 
 function discoverPets() {
@@ -320,10 +325,14 @@ function discoverPets() {
     || activePet?.key;
 
   pets = discoverPetsInRoot(storage.petsRoot, {
-    bundledPetsRoot: BUNDLED_PETS_ROOT,
     onError: (message) => logger?.warn("Pet load error", message)
   });
-  activePet = pets.find((pet) => pet.id === preferred || pet.key === preferred)
+  const preferredId = typeof preferred === "string"
+    ? preferred.replace(/^(?:builtin|pets):/, "")
+    : preferred;
+  activePet = pets.find((pet) => (
+    pet.id === preferred || pet.key === preferred || pet.id === preferredId
+  ))
     || pets[0]
     || null;
 }
@@ -393,7 +402,7 @@ function reloadPets() {
   taskSystem?.notifySettingsChanged();
 }
 
-async function openCodexPetsFolder() {
+async function openPetsFolder() {
   const target = getPetStorageInfo().petsRoot;
   try {
     fs.mkdirSync(target, { recursive: true });
@@ -442,7 +451,6 @@ function appSettingsSnapshot() {
         key: pet.key,
         displayName: pet.displayName,
         description: pet.description,
-        sourceLabel: pet.sourceLabel,
         spritesheetUrl: payload?.spritesheetUrl ?? "",
         frame: payload?.frame ?? { width: 192, height: 208, columns: 8, rows: 9 }
       };
@@ -703,7 +711,7 @@ function performPetMouseAction(action) {
 
 function petTrayItems() {
   const items = pets.map((pet) => ({
-    label: `${pet.displayName} · ${pet.sourceLabel}`,
+    label: pet.displayName,
     type: "radio",
     checked: pet.key === activePet?.key,
     click: () => selectPet(pet.key)
@@ -717,7 +725,7 @@ function petTrayItems() {
     ...items,
     { type: "separator" },
     { label: "重新加载宠物", click: () => reloadPets() },
-    { label: "打开 Codex 宠物目录", click: () => openCodexPetsFolder() }
+    { label: "打开宠物目录", click: () => openPetsFolder() }
   ];
 }
 

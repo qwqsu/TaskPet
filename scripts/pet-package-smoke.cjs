@@ -1,12 +1,13 @@
 /**
  * 用户 PetDex ZIP 的真实 Electron smoke test。
  * 宠物只安装到新建的系统临时目录，并由 Chromium 再解码一次图集；
- * finally 会删除临时文件，不会写入用户正式的 ~/.codex/pets。
+ * finally 会删除临时文件，不会写入 TaskPet 正式的 src/assets/pets 宠物目录。
  */
 const { app, BrowserWindow } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 const {
   inspectPetSpritesheetFile,
   installPetPackageFromZipFile
@@ -45,10 +46,23 @@ app.whenReady().then(async () => {
       webPreferences: { contextIsolation: true, nodeIntegration: false, sandbox: true }
     });
     try {
-      await decodeWindow.loadFile(installed.spritesheetPath);
-      const browserDecodedSize = await decodeWindow.webContents.executeJavaScript(`(() => {
+      // 直接导航到图片在部分 Windows/Electron 环境会返回 ERR_FAILED；正式桌宠实际是
+      // 从 HTML/CSS 加载图集，因此 smoke 也通过一个隔离 HTML 页面验证同一条路径。
+      const decodePagePath = path.join(smokeRoot, "decode.html");
+      fs.writeFileSync(decodePagePath, `<!doctype html><img id="pet" src=${JSON.stringify(
+        pathToFileURL(installed.spritesheetPath).toString()
+      )}>`, "utf8");
+      await decodeWindow.loadFile(decodePagePath);
+      const browserDecodedSize = await decodeWindow.webContents.executeJavaScript(`(async () => {
         const image = document.images[0];
-        return image ? { width: image.naturalWidth, height: image.naturalHeight } : null;
+        if (!image) return null;
+        if (!image.complete) {
+          await new Promise((resolve, reject) => {
+            image.addEventListener("load", resolve, { once: true });
+            image.addEventListener("error", () => reject(new Error("image decode failed")), { once: true });
+          });
+        }
+        return { width: image.naturalWidth, height: image.naturalHeight };
       })()`);
       if (
         !browserDecodedSize

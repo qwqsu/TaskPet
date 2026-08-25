@@ -91,7 +91,6 @@ export interface PetSettingsOption {
   key: string;
   displayName: string;
   description: string;
-  sourceLabel: string;
   spritesheetUrl: string;
   frame: {
     width: number;

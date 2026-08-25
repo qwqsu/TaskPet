@@ -33,13 +33,12 @@ const snapshot: AppSettingsSnapshot = {
     doubleClick: "toggle-monitoring",
     rightClick: "open-settings"
   },
-  activePetKey: "builtin:xiao-jin",
+  activePetKey: "pets:yinienie",
   pets: [{
-    key: "builtin:xiao-jin",
-    displayName: "小锦",
-    description: "内置桌宠",
-    sourceLabel: "内置",
-    spritesheetUrl: "file:///TaskPet/xiao-jin/spritesheet.webp",
+    key: "pets:yinienie",
+    displayName: "yinienie",
+    description: "默认桌宠",
+    spritesheetUrl: "file:///TaskPet/yinienie/spritesheet.webp",
     frame: { width: 192, height: 208, columns: 8, rows: 9 }
   }],
   dataDirectory: "C:\\Users\\Test\\AppData\\Roaming\\TaskPet",

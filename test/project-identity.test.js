@@ -24,6 +24,7 @@ test("package and builder use the TaskPet v1.0 release identity", () => {
   assert.match(builder, /^  differentialPackage: false$/m);
   assert.match(builder, /^  - build\/\*\*$/m);
   assert.ok(builder.includes("  - '!src/**/*.ts'"));
+  assert.ok(builder.includes("  - '!src/assets/pets/**'"));
   assert.match(builder, /^electronLanguages:$/m);
   assert.match(builder, /^  - en-US$/m);
   assert.match(builder, /^  - zh-CN$/m);
@@ -34,6 +35,8 @@ test("package and builder use the TaskPet v1.0 release identity", () => {
   assert.match(builder, /^npmRebuild: true$/m);
   assert.match(builder, /^extraResources:$/m);
   assert.match(builder, /THIRD_PARTY_LICENSES\.txt/);
+  assert.match(builder, /^  - from: src\/assets\/pets$/m);
+  assert.match(builder, /^    to: src\/assets\/pets$/m);
   assert.match(builder, /^publish: null$/m);
   assert.doesNotMatch(builder, /yangbuyiya\/desktop-pet/);
   assert.equal(fs.existsSync(path.join(root, "THIRD_PARTY_LICENSES.txt")), true);

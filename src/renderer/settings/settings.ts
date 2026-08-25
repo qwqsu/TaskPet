@@ -31,7 +31,6 @@ interface AppSettingsSnapshot {
     key: string;
     displayName: string;
     description: string;
-    sourceLabel: string;
     spritesheetUrl: string;
     frame: { width: number; height: number; columns: number; rows: number };
   }>;
@@ -163,7 +162,7 @@ function renderCurrentPetPreview(snapshot: AppSettingsSnapshot): void {
   currentPetPreview.hidden = !pet;
   if (!pet) return;
 
-  currentPetName.textContent = `${pet.displayName} · ${pet.sourceLabel}`;
+  currentPetName.textContent = pet.displayName;
   currentPetDescription.textContent = pet.description || "暂无描述";
   currentPetSprite.src = pet.spritesheetUrl;
   const previewHeight = 86;
@@ -194,7 +193,7 @@ function render(snapshot: AppSettingsSnapshot): void {
   petSelect.replaceChildren(...snapshot.pets.map((pet) => {
     const option = document.createElement("option");
     option.value = pet.key;
-    option.textContent = `${pet.displayName} · ${pet.sourceLabel}`;
+    option.textContent = pet.displayName;
     return option;
   }));
   petSelect.disabled = snapshot.pets.length === 0;
