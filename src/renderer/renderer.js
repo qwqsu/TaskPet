@@ -1,13 +1,25 @@
+/**
+ * 透明桌宠窗口的 Renderer。
+ * 负责 spritesheet 动画、状态文字和点击/拖拽；尺寸只由设置页三档预设控制。
+ */
 const pet = document.getElementById("pet");
 const stage = document.querySelector(".stage");
 const sprite = document.getElementById("sprite");
 const fallback = document.getElementById("fallback");
-const resizeHandle = document.getElementById("resizeHandle");
+const petStatus = document.getElementById("petStatus");
+const petStatusMessage = document.getElementById("petStatusMessage");
+const petStatusDetail = document.getElementById("petStatusDetail");
+
+// ---------- 动画格式与页面内存状态 ----------
 
 const DEFAULT_FRAME = Object.freeze({ width: 192, height: 208, columns: 8, rows: 9 });
-const BASE_SPRITE_SCALE = 0.86;
-const BASE_WINDOW_WIDTH = 240;
-const BASE_WINDOW_HEIGHT = 286;
+const DOUBLE_CLICK_DELAY_MS = 350;
+const IDLE_MESSAGES = Object.freeze([
+  "ヾ(•ω•`)o",
+  "(❁´◡`❁)",
+  "(‾◡◝)"
+]);
+const IDLE_MESSAGE_INTERVAL_MS = 5_000;
 const ALLOWED_STATES = new Set([
   "idle",
   "working",
@@ -33,25 +45,75 @@ let frameIndex = 0;
 let frameTimer = null;
 let dragStart = null;
 let lastDragDirection = null;
-let zoom = 1;
-let minZoom = 0.65;
-let maxZoom = 2.4;
-let resizeStart = null;
-let hideResizeTimer = null;
+let visualSize = { width: 1, height: 1 };
+let animationStarted = false;
+let pendingSingleClickTimer = null;
+let suppressNextClick = false;
+let idleMessageIndex = 0;
+let idleMessageTimer = null;
+let idleRotationEnabled = false;
+
+// ---------- 调试边框、输入归一化与三档尺寸 ----------
+
+function updateDebugBoundsLabel() {
+  stage.dataset.debugBounds = `窗口 ${window.innerWidth} × ${window.innerHeight}`;
+}
+
+function applyDebugBounds(enabled) {
+  document.documentElement.classList.toggle("debug-pet-bounds", Boolean(enabled));
+  updateDebugBoundsLabel();
+}
 
 function normalizeState(state) {
   return ALLOWED_STATES.has(state) ? state : "idle";
 }
 
-function clampZoom(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 1;
-  return Math.max(minZoom, Math.min(maxZoom, numeric));
-}
-
 function positiveInteger(value, fallback, minimum = 1) {
   const numeric = Number(value);
   return Number.isInteger(numeric) && numeric >= minimum ? numeric : fallback;
+}
+
+function requiredPositiveNumber(value, label) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric <= 0) {
+    throw new TypeError(`${label} must be a positive number`);
+  }
+  return numeric;
+}
+
+function requiredNonNegativeNumber(value, label) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < 0) {
+    throw new TypeError(`${label} must be a non-negative number`);
+  }
+  return numeric;
+}
+
+function normalizePetSizePreset(nextPreset = {}) {
+  return {
+    scale: requiredPositiveNumber(nextPreset.scale, "preset.scale"),
+    petWidth: requiredPositiveNumber(nextPreset.petWidth, "preset.petWidth"),
+    petHeight: requiredPositiveNumber(nextPreset.petHeight, "preset.petHeight"),
+    windowWidth: requiredPositiveNumber(nextPreset.windowWidth, "preset.windowWidth"),
+    windowHeight: requiredPositiveNumber(nextPreset.windowHeight, "preset.windowHeight"),
+    petTop: requiredNonNegativeNumber(nextPreset.petTop, "preset.petTop"),
+    statusGap: requiredNonNegativeNumber(nextPreset.statusGap, "preset.statusGap"),
+    statusSideMargin: requiredNonNegativeNumber(
+      nextPreset.statusSideMargin,
+      "preset.statusSideMargin"
+    ),
+    statusPaddingX: requiredNonNegativeNumber(nextPreset.statusPaddingX, "preset.statusPaddingX"),
+    statusPaddingY: requiredNonNegativeNumber(nextPreset.statusPaddingY, "preset.statusPaddingY"),
+    idleFontSize: requiredPositiveNumber(nextPreset.idleFontSize, "preset.idleFontSize"),
+    statusMessageFontSize: requiredPositiveNumber(
+      nextPreset.statusMessageFontSize,
+      "preset.statusMessageFontSize"
+    ),
+    statusDetailFontSize: requiredPositiveNumber(
+      nextPreset.statusDetailFontSize,
+      "preset.statusDetailFontSize"
+    )
+  };
 }
 
 function applyFrame(nextFrame = {}) {
@@ -78,45 +140,86 @@ function applyAnimations(actions) {
   animations = next;
 }
 
-function applyZoom(nextZoom) {
-  zoom = clampZoom(nextZoom);
-  document.documentElement.style.setProperty("--zoom", String(zoom));
-  document.documentElement.style.setProperty("--pet-left", `${36 * zoom}px`);
-  document.documentElement.style.setProperty("--pet-bottom", `${12 * zoom}px`);
-  document.documentElement.style.setProperty("--pet-width", `${168 * zoom}px`);
-  document.documentElement.style.setProperty("--pet-height", `${184 * zoom}px`);
-  document.documentElement.style.setProperty("--sprite-left", `${1 * zoom}px`);
-  document.documentElement.style.setProperty("--handle-right", `${34 * zoom}px`);
-  document.documentElement.style.setProperty("--handle-bottom", `${52 * zoom}px`);
+function applyPetSizePreset(nextPreset) {
+  const preset = normalizePetSizePreset(nextPreset);
+  visualSize = { width: preset.petWidth, height: preset.petHeight };
+  updateDebugBoundsLabel();
+  const petLeft = Math.max(0, Math.round((preset.windowWidth - preset.petWidth) / 2));
+  document.documentElement.style.setProperty("--pet-left", `${petLeft}px`);
+  document.documentElement.style.setProperty("--pet-top", `${preset.petTop}px`);
+  document.documentElement.style.setProperty("--pet-width", `${preset.petWidth}px`);
+  document.documentElement.style.setProperty("--pet-height", `${preset.petHeight}px`);
+  document.documentElement.style.setProperty(
+    "--status-top",
+    `${preset.petTop + preset.petHeight + preset.statusGap}px`
+  );
+  document.documentElement.style.setProperty(
+    "--status-side-margin",
+    `${preset.statusSideMargin}px`
+  );
+  document.documentElement.style.setProperty("--status-padding-x", `${preset.statusPaddingX}px`);
+  document.documentElement.style.setProperty("--status-padding-y", `${preset.statusPaddingY}px`);
+  document.documentElement.style.setProperty("--idle-font-size", `${preset.idleFontSize}px`);
+  document.documentElement.style.setProperty(
+    "--status-message-font-size",
+    `${preset.statusMessageFontSize}px`
+  );
+  document.documentElement.style.setProperty(
+    "--status-detail-font-size",
+    `${preset.statusDetailFontSize}px`
+  );
+  document.documentElement.style.setProperty(
+    "--fallback-scale-x",
+    String(preset.petWidth / 126)
+  );
+  document.documentElement.style.setProperty(
+    "--fallback-scale-y",
+    String(preset.petHeight / 164)
+  );
+  document.documentElement.classList.add("pet-size-ready");
   updateSpriteMetrics();
   drawFrame();
 }
 
 function getAtlasScale() {
-  return BASE_SPRITE_SCALE * zoom;
+  return {
+    x: visualSize.width / frame.width,
+    y: visualSize.height / frame.height
+  };
 }
+
+// ---------- Codex-compatible spritesheet 绘制 ----------
 
 function updateSpriteMetrics() {
   const atlasScale = getAtlasScale();
-  sprite.style.width = `${frame.width * atlasScale}px`;
-  sprite.style.height = `${frame.height * atlasScale}px`;
-  sprite.style.backgroundSize = `${frame.width * frame.columns * atlasScale}px ${frame.height * frame.rows * atlasScale}px`;
+  sprite.style.width = `${visualSize.width}px`;
+  sprite.style.height = `${visualSize.height}px`;
+  sprite.style.backgroundSize = `${frame.width * frame.columns * atlasScale.x}px ${frame.height * frame.rows * atlasScale.y}px`;
 }
 
 function drawFrame() {
+  // 每一行代表一个状态，每一列代表该状态的一帧。
   const animation = animations[currentState] || animations.idle;
   const atlasScale = getAtlasScale();
-  const x = -(frameIndex * frame.width * atlasScale);
-  const y = -(animation.row * frame.height * atlasScale);
+  const x = -(frameIndex * frame.width * atlasScale.x);
+  const y = -(animation.row * frame.height * atlasScale.y);
   sprite.style.backgroundPosition = `${x}px ${y}px`;
 }
 
+function stopFrameLoop() {
+  if (frameTimer !== null) clearTimeout(frameTimer);
+  frameTimer = null;
+}
+
 function scheduleNextFrame() {
-  clearTimeout(frameTimer);
+  stopFrameLoop();
+  if (document.hidden || !animationStarted) return;
   const animation = animations[currentState] || animations.idle;
+  const frameCount = Math.max(1, Math.min(animation.durations.length, frame.columns));
   const duration = animation.durations[frameIndex] || 160;
   frameTimer = setTimeout(() => {
-    frameIndex = (frameIndex + 1) % animation.durations.length;
+    frameTimer = null;
+    frameIndex = (frameIndex + 1) % frameCount;
     drawFrame();
     scheduleNextFrame();
   }, duration);
@@ -124,11 +227,9 @@ function scheduleNextFrame() {
 
 function setAnimationState(state) {
   currentState = normalizeState(state);
+  animationStarted = true;
   frameIndex = 0;
   pet.dataset.state = currentState;
-  if (currentState !== "idle" && !resizeStart) {
-    stage.classList.remove("show-resize");
-  }
   drawFrame();
   scheduleNextFrame();
 }
@@ -150,27 +251,66 @@ function setPet(petPayload) {
   drawFrame();
 }
 
+function renderPetStatus(message, detail, isIdleText = false) {
+  const visible = message.length > 0 || detail.length > 0;
+  petStatus.setAttribute("aria-live", isIdleText ? "off" : "polite");
+  petStatusMessage.textContent = message;
+  petStatusDetail.textContent = detail;
+  petStatus.classList.toggle("has-detail", detail.length > 0);
+  petStatus.classList.toggle("idle-text", isIdleText);
+  petStatus.classList.toggle("show", visible);
+  petStatus.hidden = !visible;
+}
+
+function stopIdleMessageRotation() {
+  if (idleMessageTimer !== null) clearTimeout(idleMessageTimer);
+  idleMessageTimer = null;
+}
+
+function showNextIdleMessage() {
+  idleMessageTimer = null;
+  if (!idleRotationEnabled || currentState !== "idle" || document.hidden) return;
+  const message = IDLE_MESSAGES[idleMessageIndex % IDLE_MESSAGES.length];
+  idleMessageIndex = (idleMessageIndex + 1) % IDLE_MESSAGES.length;
+  renderPetStatus(message, "", true);
+  idleMessageTimer = setTimeout(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS);
+}
+
+function updatePetStatus(state, message, detail) {
+  stopIdleMessageRotation();
+  idleRotationEnabled = state === "idle" && message.length === 0 && detail.length === 0;
+  if (idleRotationEnabled) {
+    showNextIdleMessage();
+    return;
+  }
+  renderPetStatus(message, detail);
+}
+
 function setPetState(payload) {
   if (payload?.activePet && payload.activePet.key !== currentPet?.key) {
     setPet(payload.activePet);
   }
-  setAnimationState(payload?.state);
+  const message = typeof payload?.message === "string" ? payload.message.slice(0, 160) : "";
+  const detail = typeof payload?.detail === "string" ? payload.detail.slice(0, 32) : "";
+  const nextState = normalizeState(payload?.state);
+  if (!animationStarted || nextState !== currentState) setAnimationState(nextState);
+  // 标题和计时写入不同元素；idle 只显示无边框颜文字。
+  updatePetStatus(nextState, message, detail);
 }
 
-async function startDrag(event) {
-  if (event.button !== 0 || event.target.closest("#resizeHandle")) return;
+// ---------- 单击与拖拽 ----------
+
+function startDrag(event) {
+  if (event.button !== 0) return;
   const pointerId = event.pointerId;
   pet.setPointerCapture(pointerId);
-  const bounds = await window.taskPet.getWindowBounds();
-  if (!bounds || !pet.hasPointerCapture(pointerId)) return;
-
+  window.taskPet.startWindowDrag();
   dragStart = {
     pointerId,
     startScreenX: event.screenX,
     startScreenY: event.screenY,
     lastScreenX: event.screenX,
-    windowX: bounds.x,
-    windowY: bounds.y
+    moved: false
   };
   lastDragDirection = null;
 }
@@ -179,13 +319,11 @@ function moveDrag(event) {
   if (!dragStart || event.pointerId !== dragStart.pointerId) return;
   const dx = event.screenX - dragStart.startScreenX;
   const dy = event.screenY - dragStart.startScreenY;
+  if (Math.abs(dx) >= 5 || Math.abs(dy) >= 5) dragStart.moved = true;
   const stepX = event.screenX - dragStart.lastScreenX;
   dragStart.lastScreenX = event.screenX;
 
-  window.taskPet.moveWindow({
-    x: dragStart.windowX + dx,
-    y: dragStart.windowY + dy
-  });
+  window.taskPet.moveWindow();
 
   if (Math.abs(stepX) < 1) return;
   const direction = stepX > 0 ? "drag-right" : "drag-left";
@@ -196,72 +334,62 @@ function moveDrag(event) {
 }
 
 function endDrag(event) {
+  // 真正拖拽只保存位置；单击/双击在 click 事件中按设置分发。
   if (!dragStart || event.pointerId !== dragStart.pointerId) return;
+  // pointercancel 不会继续产生 click，不能让它误吞下一次正常单击。
+  suppressNextClick = event.type === "pointerup" && dragStart.moved;
   dragStart = null;
   lastDragDirection = null;
   window.taskPet.finishDrag();
 }
 
-function showResizeHandle() {
-  if (currentState !== "idle" && !resizeStart) return;
-  clearTimeout(hideResizeTimer);
-  stage.classList.add("show-resize");
-}
-
-function hideResizeHandleSoon() {
-  clearTimeout(hideResizeTimer);
-  hideResizeTimer = setTimeout(() => {
-    if (!resizeStart) stage.classList.remove("show-resize");
-  }, 180);
-}
-
-async function startResize(event) {
+function handlePetClick(event) {
   if (event.button !== 0) return;
-  event.preventDefault();
-  event.stopPropagation();
-
-  const pointerId = event.pointerId;
-  resizeHandle.setPointerCapture(pointerId);
-  const bounds = await window.taskPet.getWindowBounds();
-  if (!bounds || !resizeHandle.hasPointerCapture(pointerId)) return;
-  resizeStart = {
-    pointerId,
-    startScreenX: event.screenX,
-    startScreenY: event.screenY,
-    width: bounds.width,
-    height: bounds.height
-  };
-  showResizeHandle();
+  if (suppressNextClick) {
+    suppressNextClick = false;
+    return;
+  }
+  if (event.detail >= 2) {
+    clearTimeout(pendingSingleClickTimer);
+    pendingSingleClickTimer = null;
+    window.taskPet.performMouseAction("double");
+    return;
+  }
+  clearTimeout(pendingSingleClickTimer);
+  pendingSingleClickTimer = setTimeout(() => {
+    pendingSingleClickTimer = null;
+    window.taskPet.performMouseAction("left");
+  }, DOUBLE_CLICK_DELAY_MS);
 }
 
-function moveResize(event) {
-  if (!resizeStart || event.pointerId !== resizeStart.pointerId) return;
+function handlePetContextMenu(event) {
   event.preventDefault();
-  event.stopPropagation();
-
-  const dx = event.screenX - resizeStart.startScreenX;
-  const dy = event.screenY - resizeStart.startScreenY;
-  const widthZoom = (resizeStart.width + dx) / BASE_WINDOW_WIDTH;
-  const heightZoom = (resizeStart.height + dy) / BASE_WINDOW_HEIGHT;
-  const nextZoom = clampZoom(Math.max(widthZoom, heightZoom));
-  applyZoom(nextZoom);
-  window.taskPet.resizeWindow({ zoom: nextZoom });
+  window.taskPet.performMouseAction("right");
 }
 
-function endResize(event) {
-  if (!resizeStart || event.pointerId !== resizeStart.pointerId) return;
-  event.preventDefault();
-  event.stopPropagation();
-  resizeStart = null;
-  hideResizeHandleSoon();
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopFrameLoop();
+    stopIdleMessageRotation();
+    return;
+  }
+
+  if (animationStarted) {
+    drawFrame();
+    scheduleNextFrame();
+  }
+  if (idleRotationEnabled && idleMessageTimer === null) {
+    idleMessageTimer = setTimeout(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS);
+  }
 }
+
+// ---------- 首次初始化与 DOM 事件绑定 ----------
 
 window.taskPet.getInitialState().then((initial) => {
   const config = initial?.config || {};
-  minZoom = Number(config.minZoom) || minZoom;
-  maxZoom = Number(config.maxZoom) || maxZoom;
   applyAnimations(initial?.actions);
-  applyZoom(Number(config.zoom) || 1);
+  applyPetSizePreset(config.preset);
+  applyDebugBounds(config.debugPetBounds);
   setPet(initial?.activePet);
   setPetState(initial);
   window.taskPet.rendererReady();
@@ -272,16 +400,17 @@ window.taskPet.getInitialState().then((initial) => {
 
 window.taskPet.onPetChange(setPet);
 window.taskPet.onStateChange(setPetState);
-window.taskPet.onZoomChange((payload) => applyZoom(payload?.zoom));
+window.taskPet.onPetSizeChange((payload) => applyPetSizePreset(payload?.preset));
 pet.addEventListener("pointerdown", startDrag);
 pet.addEventListener("pointermove", moveDrag);
 pet.addEventListener("pointerup", endDrag);
 pet.addEventListener("pointercancel", endDrag);
-pet.addEventListener("pointerenter", showResizeHandle);
-pet.addEventListener("pointerleave", hideResizeHandleSoon);
-resizeHandle.addEventListener("pointerenter", showResizeHandle);
-resizeHandle.addEventListener("pointerleave", hideResizeHandleSoon);
-resizeHandle.addEventListener("pointerdown", startResize);
-resizeHandle.addEventListener("pointermove", moveResize);
-resizeHandle.addEventListener("pointerup", endResize);
-resizeHandle.addEventListener("pointercancel", endResize);
+pet.addEventListener("click", handlePetClick);
+pet.addEventListener("contextmenu", handlePetContextMenu);
+document.addEventListener("visibilitychange", handleVisibilityChange);
+window.addEventListener("beforeunload", () => {
+  clearTimeout(pendingSingleClickTimer);
+  stopFrameLoop();
+  stopIdleMessageRotation();
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
+});

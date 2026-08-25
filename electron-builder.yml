@@ -2,12 +2,14 @@ appId: com.taskpet.shell
 productName: TaskPet
 copyright: Copyright © 2026 TaskPet contributors
 icon: src/assets/logo.png
+publish: null
 
 directories:
   output: dist
 
 files:
   - src/**
+  - build/**
   - package.json
   - LICENSE
   - README.md
@@ -17,14 +19,40 @@ files:
   - '!**/test/**'
   - '!**/.github/**'
   - '!scripts/**'
+  - '!src/**/*.ts'
+  - '!node_modules/**/*.d.ts'
+  - '!node_modules/**/*.md'
+  - '!node_modules/**/*.ts'
+  - '!node_modules/better-sqlite3/deps/**'
+  - '!node_modules/better-sqlite3/src/**'
+  - '!node_modules/better-sqlite3/binding.gyp'
+  - '!node_modules/koffi/doc/**'
+  - '!node_modules/koffi/lib/native/**'
+  - '!node_modules/koffi/src/koffi/src/**/*.cc'
+  - '!node_modules/koffi/src/koffi/src/**/*.hh'
+  - '!node_modules/koffi/src/koffi/src/**/*.inc'
+  - '!node_modules/koffi/src/koffi/src/**/*.def'
+  - '!node_modules/koffi/vendor/**'
+  - '!node_modules/@koromix/**/*.lib'
 
 asar: true
+asarUnpack:
+  - node_modules/better-sqlite3/build/Release/*.node
+  - node_modules/@koromix/*/**/*.node
+
+electronLanguages:
+  - en-US
+  - zh-CN
+
+extraResources:
+  - from: THIRD_PARTY_LICENSES.txt
+    to: THIRD_PARTY_LICENSES.txt
 
 win:
   executableName: TaskPet
-  # P0 produces an unsigned shell build. Enable resource editing/signing with the
-  # TaskPet release certificate when the formal release pipeline is established.
-  signAndEditExecutable: false
+  # v1.0 暂未配置代码签名；仍保留资源编辑，让 exe 和安装包写入
+  # TaskPet 图标、产品名与版本信息。
+  signAndEditExecutable: true
   target:
     - target: nsis
       arch:
@@ -32,6 +60,7 @@ win:
 
 nsis:
   oneClick: false
+  differentialPackage: false
   allowElevation: true
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: always
@@ -52,4 +81,4 @@ mac:
   gatekeeperAssess: false
   notarize: false
 
-npmRebuild: false
+npmRebuild: true

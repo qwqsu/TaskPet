@@ -104,6 +104,12 @@ test("sanitizeId keeps ids filesystem-safe", () => {
 test("Codex-compatible frame geometry is the default", () => {
   assert.deepEqual(normalizePetFrame(), DEFAULT_PET_FRAME);
   assert.deepEqual(normalizePetFrame({ width: -1, columns: 4, rows: 7 }), DEFAULT_PET_FRAME);
+  assert.deepEqual(normalizePetFrame({ width: 162, height: 154, columns: 7, rows: 9 }), {
+    width: 162,
+    height: 154,
+    columns: 7,
+    rows: 9
+  });
 });
 
 test("pet manifests can provide explicit frame geometry", () => {
@@ -130,5 +136,9 @@ test("pet manifests cannot load a spritesheet outside their package", () => {
   fs.writeFileSync(path.join(petsRoot, "outside.webp"), WEBP);
   writePet(petsRoot, "unsafe", { spritesheetPath: "../outside.webp" });
 
-  assert.deepEqual(discoverPets(petsRoot), []);
+  const errors = [];
+  assert.deepEqual(discoverPets(petsRoot, { onError: (message) => errors.push(message) }), []);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /Skipped invalid pet package/);
+  assert.equal(errors[0].includes(root), false);
 });

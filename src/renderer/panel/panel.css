@@ -1,0 +1,686 @@
+/*
+ * 任务面板视觉样式。
+ * 色板集中在 :root；后续换主题优先修改变量，不必逐个改组件。
+ */
+:root {
+  color-scheme: light;
+  --ink: #24261f;
+  --muted: #72766a;
+  --paper: #f5f2ea;
+  --card: rgba(255, 255, 255, 0.86);
+  --line: rgba(48, 51, 42, 0.12);
+  --accent: #5f7452;
+  --accent-strong: #435b39;
+  --accent-soft: #dce6d4;
+  --danger: #a54f45;
+  --shadow: 0 16px 44px rgba(48, 43, 30, 0.12);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  min-width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  color: var(--ink);
+  background:
+    radial-gradient(circle at 100% 0, rgba(211, 224, 199, 0.76), transparent 35%),
+    linear-gradient(155deg, #faf8f2 0%, var(--paper) 68%);
+  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
+}
+
+/* ---------- 页面头部与导航 ---------- */
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  color: inherit;
+}
+
+.app-shell {
+  width: min(100%, 700px);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 28px 24px 36px;
+}
+
+.app-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.eyebrow {
+  margin: 0 0 4px;
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+h1,
+h2,
+p {
+  margin-top: 0;
+}
+
+h1 {
+  margin-bottom: 5px;
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 31px;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+h2 {
+  margin-bottom: 0;
+  font-size: 22px;
+}
+
+.summary {
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.primary-button,
+.secondary-button,
+.danger-button,
+.icon-button,
+.tab {
+  border: 0;
+  cursor: pointer;
+}
+
+.primary-button {
+  min-height: 38px;
+  padding: 0 15px;
+  border-radius: 12px;
+  color: #fff;
+  background: var(--accent-strong);
+  box-shadow: 0 7px 18px rgba(67, 91, 57, 0.22);
+  font-weight: 700;
+}
+
+.primary-button:hover {
+  background: #354a2e;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin: 24px 0 18px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.48);
+}
+
+.tab {
+  min-height: 36px;
+  border-radius: 10px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 700;
+}
+
+.tab.active {
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 4px 14px rgba(48, 43, 30, 0.08);
+}
+
+.status-message {
+  min-height: 18px;
+  margin: -8px 2px 8px;
+  color: var(--danger);
+  font-size: 12px;
+}
+
+/* ---------- 今日任务与历史卡片 ---------- */
+
+.task-list,
+.history-list {
+  display: grid;
+  gap: 10px;
+}
+
+.task-card {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 74px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 17px;
+  background: var(--card);
+  box-shadow: 0 8px 24px rgba(48, 43, 30, 0.055);
+}
+
+.task-card.completed {
+  background: rgba(239, 242, 234, 0.82);
+  box-shadow: none;
+}
+
+.task-check {
+  width: 23px;
+  height: 23px;
+  margin: 0;
+  accent-color: var(--accent-strong);
+  cursor: pointer;
+}
+
+.task-content {
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  text-align: left;
+  background: transparent;
+  cursor: pointer;
+}
+
+.task-title {
+  display: block;
+  overflow: hidden;
+  font-size: 15px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.completed .task-title {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+.task-meta,
+.history-meta {
+  display: block;
+  margin-top: 5px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.edit-mark {
+  padding: 5px;
+  color: #92978a;
+  font-size: 17px;
+}
+
+.launch-button {
+  min-width: 52px;
+  min-height: 31px;
+  padding: 0 10px;
+  border: 1px solid rgba(67, 91, 57, 0.28);
+  border-radius: 10px;
+  color: var(--accent-strong);
+  background: #f4f8f1;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.launch-button:hover {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.empty-state {
+  padding: 56px 22px;
+  border: 1px dashed rgba(67, 91, 57, 0.28);
+  border-radius: 18px;
+  color: var(--muted);
+  text-align: center;
+  background: rgba(255, 255, 255, 0.32);
+}
+
+.empty-state strong {
+  display: block;
+  margin-bottom: 8px;
+  color: var(--ink);
+  font-family: Georgia, "Songti SC", serif;
+  font-size: 20px;
+}
+
+.history-day {
+  margin-bottom: 10px;
+}
+
+.history-date {
+  margin: 5px 4px 9px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+}
+
+.history-entry {
+  padding: 14px 15px;
+  border-left: 4px solid var(--accent-soft);
+  border-radius: 5px 15px 15px 5px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.history-entry + .history-entry {
+  margin-top: 8px;
+}
+
+/* ---------- 今日 / 周实际运行总计时 ---------- */
+
+.stats-periods {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 4px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.52);
+}
+
+.stats-period {
+  min-height: 36px;
+  border: 0;
+  border-radius: 9px;
+  color: var(--muted);
+  background: transparent;
+  cursor: pointer;
+  font-weight: 750;
+}
+
+.stats-period.active {
+  color: var(--accent-strong);
+  background: #fff;
+  box-shadow: 0 4px 12px rgba(48, 43, 30, 0.08);
+}
+
+.stats-total-card {
+  display: grid;
+  gap: 3px;
+  margin-bottom: 12px;
+  padding: 18px;
+  border-radius: 17px;
+  color: #fff;
+  background: linear-gradient(135deg, #435b39, #708664);
+  box-shadow: 0 10px 25px rgba(67, 91, 57, 0.2);
+}
+
+.stats-total-card span,
+.stats-total-card small { color: rgba(255, 255, 255, 0.76); }
+.stats-total-card span { font-size: 12px; font-weight: 700; }
+.stats-total-card strong { font-size: 28px; font-variant-numeric: tabular-nums; }
+.stats-total-card small { font-size: 10px; }
+
+.stats-list {
+  display: grid;
+  gap: 8px;
+}
+
+.stats-entry {
+  display: grid;
+  grid-template-columns: 31px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 13px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--card);
+}
+
+.stats-rank {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent-strong);
+  background: var(--accent-soft);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.stats-title {
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stats-duration {
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 850;
+  font-variant-numeric: tabular-nums;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ---------- 添加/编辑任务对话框 ---------- */
+
+.task-dialog {
+  width: min(460px, calc(100vw - 28px));
+  max-height: calc(100vh - 32px);
+  padding: 0;
+  overflow: auto;
+  border: 1px solid rgba(48, 51, 42, 0.16);
+  border-radius: 20px;
+  color: var(--ink);
+  background: #fbfaf6;
+  box-shadow: var(--shadow);
+}
+
+.task-dialog::backdrop {
+  background: rgba(28, 31, 25, 0.34);
+  backdrop-filter: blur(3px);
+}
+
+.task-dialog form {
+  padding: 23px;
+}
+
+.dialog-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 22px;
+}
+
+.icon-button {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  color: var(--muted);
+  background: #efeee8;
+  font-size: 21px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 16px;
+  color: #555a50;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.field small,
+.field-hint {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.program-binding {
+  margin-top: 4px;
+  padding: 14px;
+  border: 1px solid rgba(48, 51, 42, 0.14);
+  border-radius: 14px;
+  background: rgba(239, 242, 234, 0.58);
+}
+
+/* ---------- 当前程序选择器 ---------- */
+
+.binding-heading,
+.picker-heading,
+.binding-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.binding-heading > div {
+  min-width: 0;
+}
+
+.binding-heading span {
+  color: #555a50;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.binding-heading small {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.program-summary {
+  overflow: hidden;
+  margin: 5px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.text-button {
+  padding: 4px 2px;
+  border: 0;
+  color: var(--accent-strong);
+  background: transparent;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.compact-field {
+  margin: 13px 0 0;
+}
+
+.binding-actions {
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
+.binding-actions .secondary-button {
+  flex: 1;
+  min-width: 0;
+  padding-right: 8px;
+  padding-left: 8px;
+  font-size: 12px;
+}
+
+.running-program-picker {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.picker-heading strong {
+  font-size: 12px;
+}
+
+.program-search {
+  min-width: 0;
+  flex: 1;
+}
+
+.program-search input {
+  width: 100%;
+  height: 30px;
+  padding: 0 10px 0 28px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  outline: none;
+  background:
+    radial-gradient(circle at 12px 13px, transparent 4px, #8a8d84 4px 5px, transparent 5px),
+    linear-gradient(45deg, transparent 48%, #8a8d84 49% 58%, transparent 59%) 17px 18px / 7px 7px no-repeat,
+    #fff;
+  font-size: 11px;
+}
+
+.program-search input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(95, 116, 82, 0.1);
+}
+
+.running-program-list {
+  display: grid;
+  gap: 6px;
+  max-height: 190px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.program-option {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  color: var(--ink);
+  text-align: left;
+  background: #fff;
+  cursor: pointer;
+}
+
+.program-option:hover {
+  border-color: var(--accent);
+  background: #f7faf4;
+}
+
+.program-option strong,
+.program-option span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.program-option strong {
+  font-size: 12px;
+}
+
+.program-option span {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.task-card.active {
+  border-color: rgba(67, 91, 57, 0.4);
+  box-shadow: 0 8px 24px rgba(67, 91, 57, 0.12);
+}
+
+/* ---------- 表单控件、按钮和响应式布局 ---------- */
+
+.field input,
+.field textarea,
+.field select {
+  width: 100%;
+  border: 1px solid rgba(48, 51, 42, 0.17);
+  border-radius: 11px;
+  outline: none;
+  color: var(--ink);
+  background: #fff;
+}
+
+.field input,
+.field select {
+  height: 41px;
+  padding: 0 11px;
+}
+
+.field textarea {
+  padding: 10px 11px;
+  resize: vertical;
+}
+
+.field input:focus,
+.field textarea:focus,
+.field select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(95, 116, 82, 0.12);
+}
+
+.field select:disabled {
+  color: var(--muted);
+  background: #eeede8;
+}
+
+.field select.modern-select {
+  padding-right: 38px;
+  appearance: none;
+  background:
+    linear-gradient(45deg, transparent 50%, #72766a 50%) calc(100% - 18px) 18px / 5px 5px no-repeat,
+    linear-gradient(135deg, #72766a 50%, transparent 50%) calc(100% - 13px) 18px / 5px 5px no-repeat,
+    linear-gradient(135deg, #fff 0%, #f8faf6 100%);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 24px;
+}
+
+.action-spacer {
+  flex: 1;
+}
+
+.secondary-button,
+.danger-button {
+  min-height: 38px;
+  padding: 0 13px;
+  border-radius: 11px;
+  background: #ecebe5;
+  font-weight: 700;
+}
+
+.danger-button {
+  color: var(--danger);
+  background: #f5e7e4;
+}
+
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 3px solid rgba(95, 116, 82, 0.28);
+  outline-offset: 2px;
+}
+
+@media (max-width: 390px) {
+  .app-shell {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
+
+  .field-grid {
+    grid-template-columns: 1fr;
+  }
+}
