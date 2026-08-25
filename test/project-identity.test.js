@@ -5,12 +5,22 @@ const path = require("node:path");
 
 const root = path.join(__dirname, "..");
 
-test("package and builder use the TaskPet v1.0 release identity", () => {
-  const packageJson = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  const builder = fs.readFileSync(path.join(root, "electron-builder.yml"), "utf8");
+test("package and builder use the TaskPet release identity", () => {
+  const packageJson = JSON.parse(
+    fs.readFileSync(path.join(root, "package.json"), "utf8")
+  );
+  const packageLockJson = JSON.parse(
+    fs.readFileSync(path.join(root, "package-lock.json"), "utf8")
+  );
+  const builder = fs.readFileSync(
+    path.join(root, "electron-builder.yml"),
+    "utf8"
+  );
 
   assert.equal(packageJson.name, "taskpet");
-  assert.equal(packageJson.version, "1.0.0");
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(packageLockJson.version, packageJson.version);
+  assert.equal(packageLockJson.packages[""].version, packageJson.version);
   assert.equal(packageJson.homepage, "https://github.com/qwqsu/TaskPet");
   assert.equal(packageJson.repository.url, "https://github.com/qwqsu/TaskPet.git");
   assert.deepEqual(Object.keys(packageJson.dependencies).sort(), ["better-sqlite3", "koffi", "zod"]);
