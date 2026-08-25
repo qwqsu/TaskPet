@@ -103,7 +103,7 @@ function createPetWindowOptions(options = {}) {
     height,
     workAreas: options.workAreas
   });
-  // 这里是 P0 桌宠壳验收的关键配置：透明、无边框、置顶、跳过任务栏。
+  // 透明、无边框、置顶、跳过任务栏是桌宠壳的关键配置。
   const windowOptions = {
     title: "TaskPet",
     width,

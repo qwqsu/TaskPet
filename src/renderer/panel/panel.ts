@@ -468,6 +468,18 @@ async function refreshStats(): Promise<void> {
   renderTimeStats(unwrap(await taskApi.timeStats(statsPeriod)));
 }
 
+async function refreshCurrentView(): Promise<void> {
+  if (currentView === "today") await refreshToday();
+  else if (currentView === "history") await refreshHistory();
+  else await refreshStats();
+}
+
+function clearStatsRefreshTimer(): void {
+  if (statsRefreshTimer === null) return;
+  window.clearTimeout(statsRefreshTimer);
+  statsRefreshTimer = null;
+}
+
 async function changeCompletion(item: TaskListItem, complete: boolean): Promise<void> {
   try {
     setStatus();
@@ -719,9 +731,7 @@ async function switchView(view: PanelView): Promise<void> {
   }
 
   try {
-    if (view === "today") await refreshToday();
-    else if (view === "history") await refreshHistory();
-    else await refreshStats();
+    await refreshCurrentView();
   } catch (error) {
     setStatus(error instanceof Error ? error.message : "无法读取页面");
   }
@@ -772,10 +782,8 @@ for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
 }
 
 const unsubscribeStored = taskApi.onChanged(() => {
-  const refresh = currentView === "today"
-    ? refreshToday()
-    : currentView === "history" ? refreshHistory() : refreshStats();
-  void refresh.catch((error: unknown) => {
+  if (document.hidden) return;
+  void refreshCurrentView().catch((error: unknown) => {
     setStatus(error instanceof Error ? error.message : "无法刷新任务");
   });
 });
@@ -785,12 +793,13 @@ const unsubscribeRuntime = runtimeApi.onChanged((snapshots) => {
   runtimeByOccurrence = new Map(
     snapshots.map((snapshot) => [snapshot.occurrenceId, snapshot])
   );
+  if (document.hidden) return;
   if (currentView === "today") renderToday([...todayItems.values()]);
   if (currentView === "stats" && statsRefreshTimer === null) {
     // 活动任务存在时最多每 4 秒读取一次统计；不会增加 SQLite 写入频率。
     statsRefreshTimer = window.setTimeout(() => {
       statsRefreshTimer = null;
-      if (currentView === "stats") {
+      if (currentView === "stats" && !document.hidden) {
         void refreshStats().catch((error: unknown) => {
           setStatus(error instanceof Error ? error.message : "无法刷新总计时");
         });
@@ -798,6 +807,18 @@ const unsubscribeRuntime = runtimeApi.onChanged((snapshots) => {
     }, 4_000);
   }
 });
+
+function handleVisibilityChange(): void {
+  if (document.hidden) {
+    clearStatsRefreshTimer();
+    return;
+  }
+  void refreshCurrentView().catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "无法刷新任务面板");
+  });
+}
+
+document.addEventListener("visibilitychange", handleVisibilityChange);
 
 const unsubscribeCommands = uiApi.onCommand((command) => {
   void handlePanelCommand(command).catch((error: unknown) => {
@@ -809,7 +830,8 @@ window.addEventListener("beforeunload", () => {
   unsubscribeStored();
   unsubscribeRuntime();
   unsubscribeCommands();
-  if (statsRefreshTimer !== null) window.clearTimeout(statsRefreshTimer);
+  clearStatsRefreshTimer();
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
 
 void (async () => {

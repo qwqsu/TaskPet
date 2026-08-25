@@ -56,7 +56,7 @@ test("drag states restore the state that was active before dragging", () => {
   ]);
 });
 
-test("PetStateController rejects states outside the P0 model", () => {
+test("PetStateController rejects states outside the six-state model", () => {
   const controller = new PetStateController();
   assert.throws(() => controller.setState("review"), /Unsupported pet state/);
   assert.throws(() => controller.startDrag("left"), /Unsupported drag direction/);

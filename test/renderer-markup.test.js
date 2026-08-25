@@ -71,6 +71,22 @@ test("pet renderer consumes the Main Process preset without a second zoom model"
   assert.doesNotMatch(styles, /--zoom/);
 });
 
+test("pet renderer pauses animation work while the pet window is hidden", () => {
+  const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
+
+  assert.match(source, /function stopFrameLoop\(\)/);
+  assert.match(source, /if \(document\.hidden \|\| !animationStarted\) return/);
+  assert.match(source, /function handleVisibilityChange\(\)/);
+  assert.match(source, /document\.addEventListener\("visibilitychange", handleVisibilityChange\)/);
+  assert.match(source, /stopIdleMessageRotation\(\)/);
+});
+
+test("pet renderer limits animation frames to a custom atlas column count", () => {
+  const renderer = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
+  assert.match(renderer, /Math\.min\(animation\.durations\.length, frame\.columns\)/);
+  assert.match(renderer, /frameIndex = \(frameIndex \+ 1\) % frameCount/);
+});
+
 test("pet click, double click, and right click use fixed mouse-action IPC", () => {
   const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
   const preload = fs.readFileSync(path.join(__dirname, "..", "src", "preload.js"), "utf8");

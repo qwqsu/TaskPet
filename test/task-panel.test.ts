@@ -16,6 +16,7 @@ test("task panel keeps SQLite behind an isolated preload", () => {
   const html = fs.readFileSync(path.join(root, "src", "renderer", "panel", "index.html"), "utf8");
   const renderer = fs.readFileSync(path.join(root, "src", "renderer", "panel", "panel.ts"), "utf8");
   const preload = fs.readFileSync(path.join(root, "src", "preload", "panel-preload.ts"), "utf8");
+  const taskSystem = fs.readFileSync(path.join(root, "src", "main", "task-system.ts"), "utf8");
   assert.match(html, /今日任务/);
   assert.match(html, /历史/);
   assert.match(html, /data-view="stats"/);
@@ -43,4 +44,11 @@ test("task panel keeps SQLite behind an isolated preload", () => {
   assert.match(renderer, /formatStatsBoundary\(from\).*至.*formatStatsBoundary\(to\)/);
   assert.match(renderer, /value\.getMonth\(\) \+ 1}\/\$\{value\.getDate\(\)}/);
   assert.doesNotMatch(renderer, /setInterval\s*\(/);
+  assert.match(renderer, /document\.hidden/);
+  assert.match(renderer, /addEventListener\("visibilitychange", handleVisibilityChange\)/);
+  assert.match(renderer, /clearStatsRefreshTimer\(\)/);
+  const initializeBody = taskSystem.match(/initialize\(\): void \{([\s\S]*?)\n  togglePanel\(/)?.[1] ?? "";
+  assert.doesNotMatch(initializeBody, /this\.createPanelWindow\(\)/);
+  assert.match(taskSystem, /private visiblePanelWindow\(\): BrowserWindow \| null/);
+  assert.match(taskSystem, /!panelWindow\.isVisible\(\)/);
 });

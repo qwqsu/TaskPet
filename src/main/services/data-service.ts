@@ -1,5 +1,5 @@
 /**
- * P4 数据目录与备份服务。
+ * TaskPet 数据目录与备份服务。
  * 数据库保持打开时使用 SQLite Online Backup API，避免直接复制 WAL 数据库。
  */
 import fs from "node:fs";

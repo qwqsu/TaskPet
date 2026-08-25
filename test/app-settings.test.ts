@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_PET_MOUSE_BINDINGS,
+  DroppedPetZipInputSchema,
   PET_SIZE_PRESETS,
   UpdateAppSettingsInputSchema,
   normalizePetMouseBindings,
@@ -96,5 +97,21 @@ test("pet mouse bindings use fixed actions and safe defaults", () => {
   assert.equal(UpdateAppSettingsInputSchema.safeParse({ mouseBindings: bindings }).success, true);
   assert.equal(UpdateAppSettingsInputSchema.safeParse({
     mouseBindings: { ...bindings, rightClick: "run-shell" }
+  }).success, false);
+});
+
+test("dropped pet ZIP input accepts bounded bytes without exposing a file path", () => {
+  assert.equal(DroppedPetZipInputSchema.safeParse({
+    fileName: "my-pet.zip",
+    bytes: new Uint8Array([0x50, 0x4b])
+  }).success, true);
+  assert.equal(DroppedPetZipInputSchema.safeParse({
+    fileName: "my-pet.webp",
+    bytes: new Uint8Array([1])
+  }).success, false);
+  assert.equal(DroppedPetZipInputSchema.safeParse({
+    fileName: "my-pet.zip",
+    bytes: new Uint8Array(),
+    filePath: "C:\\arbitrary.zip"
   }).success, false);
 });

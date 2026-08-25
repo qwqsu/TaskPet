@@ -19,12 +19,30 @@ files:
   - '!**/test/**'
   - '!**/.github/**'
   - '!scripts/**'
+  - '!src/**/*.ts'
+  - '!node_modules/**/*.d.ts'
+  - '!node_modules/**/*.md'
+  - '!node_modules/**/*.ts'
+  - '!node_modules/better-sqlite3/deps/**'
+  - '!node_modules/better-sqlite3/src/**'
+  - '!node_modules/better-sqlite3/binding.gyp'
+  - '!node_modules/koffi/doc/**'
+  - '!node_modules/koffi/lib/native/**'
+  - '!node_modules/koffi/src/koffi/src/**/*.cc'
+  - '!node_modules/koffi/src/koffi/src/**/*.hh'
+  - '!node_modules/koffi/src/koffi/src/**/*.inc'
+  - '!node_modules/koffi/src/koffi/src/**/*.def'
+  - '!node_modules/koffi/vendor/**'
+  - '!node_modules/@koromix/**/*.lib'
 
 asar: true
 asarUnpack:
-  - node_modules/better-sqlite3/**
-  - node_modules/koffi/**
-  - node_modules/@koromix/**
+  - node_modules/better-sqlite3/build/Release/*.node
+  - node_modules/@koromix/*/**/*.node
+
+electronLanguages:
+  - en-US
+  - zh-CN
 
 extraResources:
   - from: THIRD_PARTY_LICENSES.txt
@@ -32,8 +50,8 @@ extraResources:
 
 win:
   executableName: TaskPet
-  # P4 remains unsigned, but resource editing stays enabled so the TaskPet icon
-  # and executable metadata are applied to Windows artifacts.
+  # v1.0 暂未配置代码签名；仍保留资源编辑，让 exe 和安装包写入
+  # TaskPet 图标、产品名与版本信息。
   signAndEditExecutable: true
   target:
     - target: nsis

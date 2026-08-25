@@ -1,5 +1,5 @@
 /**
- * P4 应用设置契约。
+ * TaskPet 应用设置契约。
  * 只暴露用户可理解的开关和三档桌宠尺寸；内部轮询/计时间隔不属于设置。
  */
 import { z } from "zod";
@@ -90,7 +90,15 @@ export const DEFAULT_PET_MOUSE_BINDINGS: Readonly<PetMouseBindings> = Object.fre
 export interface PetSettingsOption {
   key: string;
   displayName: string;
+  description: string;
   sourceLabel: string;
+  spritesheetUrl: string;
+  frame: {
+    width: number;
+    height: number;
+    columns: number;
+    rows: number;
+  };
 }
 
 export interface AppSettingsSnapshot {
@@ -109,6 +117,31 @@ export interface AppSettingsSnapshot {
 export interface DataActionResult {
   canceled: boolean;
   filePath: string | null;
+}
+
+export const MAX_PET_ZIP_BYTES = 50 * 1024 * 1024;
+
+export const DroppedPetZipInputSchema = z.object({
+  fileName: z.string()
+    .trim()
+    .min(1, "ZIP 文件名不能为空")
+    .max(255, "ZIP 文件名过长")
+    .regex(/\.zip$/i, "请选择 .zip 宠物包"),
+  bytes: z.custom<Uint8Array>(
+    (value) => value instanceof Uint8Array,
+    { message: "ZIP 文件内容无效" }
+  ).refine(
+    (value) => value.byteLength > 0 && value.byteLength <= MAX_PET_ZIP_BYTES,
+    "宠物 ZIP 为空或超过 50 MB"
+  )
+}).strict();
+
+export type DroppedPetZipInput = z.input<typeof DroppedPetZipInputSchema>;
+
+export interface ImportPetResult {
+  canceled: boolean;
+  petKey: string | null;
+  settings: AppSettingsSnapshot;
 }
 
 export type PanelCommand = "open-add-task";

@@ -19,6 +19,8 @@ import { openTaskDatabase, type TaskDatabase } from "./db/database";
 import { latestSchemaVersion } from "./db/migrations";
 import type {
   AppSettingsSnapshot,
+  DroppedPetZipInput,
+  ImportPetResult,
   PanelCommand,
   UpdateAppSettingsInput
 } from "../shared/app-settings";
@@ -62,6 +64,11 @@ export interface TaskSystemLogger {
 export interface TaskSystemSettingsAdapter {
   getSnapshot(): AppSettingsSnapshot;
   update(input: UpdateAppSettingsInput): AppSettingsSnapshot | Promise<AppSettingsSnapshot>;
+  importPetZip(parentWindow: BrowserWindow | null): Promise<ImportPetResult>;
+  importDroppedPetZip(input: DroppedPetZipInput): Promise<ImportPetResult>;
+  importPetFolder(parentWindow: BrowserWindow | null): Promise<ImportPetResult>;
+  openPetDex(): Promise<void>;
+  openPetDexCreate(): Promise<void>;
   openStartupApps(): Promise<void>;
   openGitHub(): Promise<void>;
   openLicenses(): Promise<void>;
@@ -172,7 +179,8 @@ export class TaskSystem {
   }
 
   initialize(): void {
-    // 初始化顺序：恢复旧 Session → 注册 IPC → 创建面板 → 建立监控目标 → 安排跨日刷新。
+    // 初始化顺序：恢复旧 Session → 注册 IPC → 建立监控目标 → 安排跨日刷新。
+    // 任务面板首次打开时再创建，避免空闲常驻一个隐藏 Renderer。
     const recovered = this.runtime.recoverStaleSessions();
     if (recovered > 0) {
       this.logger.info(`Recovered ${recovered} unfinished process session(s)`);
@@ -212,6 +220,29 @@ export class TaskSystem {
         this.broadcastSettings(snapshot);
         return snapshot;
       },
+      importPetZip: async () => {
+        const parentWindow = this.settingsWindow && !this.settingsWindow.isDestroyed()
+          ? this.settingsWindow
+          : null;
+        const result = await this.options.settings.importPetZip(parentWindow);
+        this.broadcastSettings(result.settings);
+        return result;
+      },
+      importDroppedPetZip: async (input) => {
+        const result = await this.options.settings.importDroppedPetZip(input);
+        this.broadcastSettings(result.settings);
+        return result;
+      },
+      importPetFolder: async () => {
+        const parentWindow = this.settingsWindow && !this.settingsWindow.isDestroyed()
+          ? this.settingsWindow
+          : null;
+        const result = await this.options.settings.importPetFolder(parentWindow);
+        this.broadcastSettings(result.settings);
+        return result;
+      },
+      openPetDex: () => this.options.settings.openPetDex(),
+      openPetDexCreate: () => this.options.settings.openPetDexCreate(),
       openDataDirectory: () => this.dataService.openDataDirectory(),
       exportBackup: () => this.dataService.exportBackup(),
       openStartupApps: () => this.options.settings.openStartupApps(),
@@ -220,7 +251,6 @@ export class TaskSystem {
     });
     ipcMain.handle(TASK_CHANNELS.rendererReady, this.handleRendererReady);
     ipcMain.on(SETTINGS_CHANNELS.rendererReady, this.handleSettingsRendererReady);
-    this.createPanelWindow();
     this.reconcileWatchTargets();
     this.scheduleMidnightRefresh();
   }
@@ -256,6 +286,24 @@ export class TaskSystem {
     }
     this.settingsWindow.show();
     this.settingsWindow.focus();
+  }
+
+  toggleSettings(): void {
+    const settingsWindow = this.settingsWindow;
+    if (
+      settingsWindow
+      && !settingsWindow.isDestroyed()
+      && (
+        this.pendingSettingsShow
+        || settingsWindow.isVisible()
+        || settingsWindow.isMinimized()
+      )
+    ) {
+      this.pendingSettingsShow = false;
+      settingsWindow.close();
+      return;
+    }
+    this.showSettings();
   }
 
   get monitoringPaused(): boolean {
@@ -551,16 +599,31 @@ export class TaskSystem {
   }
 
   private broadcastChanged(): void {
-    if (!this.panelWindow || this.panelWindow.isDestroyed()) return;
-    this.panelWindow.webContents.send(TASK_CHANNELS.changed);
+    const panelWindow = this.visiblePanelWindow();
+    if (!panelWindow) return;
+    panelWindow.webContents.send(TASK_CHANNELS.changed);
   }
 
   private broadcastRuntime(): void {
-    if (!this.panelWindow || this.panelWindow.isDestroyed()) return;
-    this.panelWindow.webContents.send(
+    const panelWindow = this.visiblePanelWindow();
+    if (!panelWindow) return;
+    panelWindow.webContents.send(
       PROCESS_CHANNELS.runtimeChanged,
       this.runtime.snapshots()
     );
+  }
+
+  private visiblePanelWindow(): BrowserWindow | null {
+    const panelWindow = this.panelWindow;
+    if (
+      !panelWindow
+      || panelWindow.isDestroyed()
+      || !panelWindow.isVisible()
+      || panelWindow.isMinimized()
+    ) {
+      return null;
+    }
+    return panelWindow;
   }
 
   private broadcastSettings(snapshot: AppSettingsSnapshot): void {

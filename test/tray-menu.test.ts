@@ -8,7 +8,7 @@ function click(item: MenuItemConstructorOptions): void {
   (item.click as unknown as () => void)();
 }
 
-test("Tray menu keeps the final P4 order and dispatches shared actions", () => {
+test("Tray menu keeps the release order and dispatches shared actions", () => {
   const actions: string[] = [];
   const template = createTrayMenuTemplate({
     monitorPaused: false,
@@ -77,4 +77,3 @@ test("Tray reflects paused monitoring and disabled development auto start", () =
   assert.equal(template[6]?.label, "恢复任务监控");
   assert.equal(template[8]?.enabled, false);
 });
-

@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from "electron";
 import type {
   AppSettingsSnapshot,
   DataActionResult,
+  DroppedPetZipInput,
+  ImportPetResult,
   UpdateAppSettingsInput
 } from "../shared/app-settings";
 import type { TaskApiResult } from "../shared/task-types";
@@ -10,6 +12,11 @@ import type { TaskApiResult } from "../shared/task-types";
 const SETTINGS_CHANNELS = Object.freeze({
   get: "taskpet:settings:get",
   update: "taskpet:settings:update",
+  importPetZip: "taskpet:settings:import-pet-zip",
+  importDroppedPetZip: "taskpet:settings:import-dropped-pet-zip",
+  importPetFolder: "taskpet:settings:import-pet-folder",
+  openPetDex: "taskpet:settings:open-petdex",
+  openPetDexCreate: "taskpet:settings:open-petdex-create",
   openDataDirectory: "taskpet:data:open-directory",
   exportBackup: "taskpet:data:export-backup",
   openStartupApps: "taskpet:settings:open-startup-apps",
@@ -38,6 +45,23 @@ contextBridge.exposeInMainWorld("taskPetSettings", Object.freeze({
   ),
   update: (input: UpdateAppSettingsInput): Promise<TaskApiResult<AppSettingsSnapshot>> => (
     ipcRenderer.invoke(SETTINGS_CHANNELS.update, input)
+  ),
+  importPetZip: (): Promise<TaskApiResult<ImportPetResult>> => (
+    ipcRenderer.invoke(SETTINGS_CHANNELS.importPetZip)
+  ),
+  importDroppedPetZip: (
+    input: DroppedPetZipInput
+  ): Promise<TaskApiResult<ImportPetResult>> => (
+    ipcRenderer.invoke(SETTINGS_CHANNELS.importDroppedPetZip, input)
+  ),
+  importPetFolder: (): Promise<TaskApiResult<ImportPetResult>> => (
+    ipcRenderer.invoke(SETTINGS_CHANNELS.importPetFolder)
+  ),
+  openPetDex: (): Promise<TaskApiResult<void>> => (
+    ipcRenderer.invoke(SETTINGS_CHANNELS.openPetDex)
+  ),
+  openPetDexCreate: (): Promise<TaskApiResult<void>> => (
+    ipcRenderer.invoke(SETTINGS_CHANNELS.openPetDexCreate)
   ),
   openDataDirectory: (): Promise<TaskApiResult<DataActionResult>> => (
     ipcRenderer.invoke(SETTINGS_CHANNELS.openDataDirectory)

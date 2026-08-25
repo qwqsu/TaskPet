@@ -51,6 +51,7 @@ let pendingSingleClickTimer = null;
 let suppressNextClick = false;
 let idleMessageIndex = 0;
 let idleMessageTimer = null;
+let idleRotationEnabled = false;
 
 // ---------- 调试边框、输入归一化与三档尺寸 ----------
 
@@ -205,12 +206,20 @@ function drawFrame() {
   sprite.style.backgroundPosition = `${x}px ${y}px`;
 }
 
+function stopFrameLoop() {
+  if (frameTimer !== null) clearTimeout(frameTimer);
+  frameTimer = null;
+}
+
 function scheduleNextFrame() {
-  clearTimeout(frameTimer);
+  stopFrameLoop();
+  if (document.hidden || !animationStarted) return;
   const animation = animations[currentState] || animations.idle;
+  const frameCount = Math.max(1, Math.min(animation.durations.length, frame.columns));
   const duration = animation.durations[frameIndex] || 160;
   frameTimer = setTimeout(() => {
-    frameIndex = (frameIndex + 1) % animation.durations.length;
+    frameTimer = null;
+    frameIndex = (frameIndex + 1) % frameCount;
     drawFrame();
     scheduleNextFrame();
   }, duration);
@@ -259,7 +268,8 @@ function stopIdleMessageRotation() {
 }
 
 function showNextIdleMessage() {
-  if (currentState !== "idle") return;
+  idleMessageTimer = null;
+  if (!idleRotationEnabled || currentState !== "idle" || document.hidden) return;
   const message = IDLE_MESSAGES[idleMessageIndex % IDLE_MESSAGES.length];
   idleMessageIndex = (idleMessageIndex + 1) % IDLE_MESSAGES.length;
   renderPetStatus(message, "", true);
@@ -268,7 +278,8 @@ function showNextIdleMessage() {
 
 function updatePetStatus(state, message, detail) {
   stopIdleMessageRotation();
-  if (state === "idle" && message.length === 0 && detail.length === 0) {
+  idleRotationEnabled = state === "idle" && message.length === 0 && detail.length === 0;
+  if (idleRotationEnabled) {
     showNextIdleMessage();
     return;
   }
@@ -356,6 +367,22 @@ function handlePetContextMenu(event) {
   window.taskPet.performMouseAction("right");
 }
 
+function handleVisibilityChange() {
+  if (document.hidden) {
+    stopFrameLoop();
+    stopIdleMessageRotation();
+    return;
+  }
+
+  if (animationStarted) {
+    drawFrame();
+    scheduleNextFrame();
+  }
+  if (idleRotationEnabled && idleMessageTimer === null) {
+    idleMessageTimer = setTimeout(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS);
+  }
+}
+
 // ---------- 首次初始化与 DOM 事件绑定 ----------
 
 window.taskPet.getInitialState().then((initial) => {
@@ -380,7 +407,10 @@ pet.addEventListener("pointerup", endDrag);
 pet.addEventListener("pointercancel", endDrag);
 pet.addEventListener("click", handlePetClick);
 pet.addEventListener("contextmenu", handlePetContextMenu);
+document.addEventListener("visibilitychange", handleVisibilityChange);
 window.addEventListener("beforeunload", () => {
   clearTimeout(pendingSingleClickTimer);
+  stopFrameLoop();
   stopIdleMessageRotation();
+  document.removeEventListener("visibilitychange", handleVisibilityChange);
 });

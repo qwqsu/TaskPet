@@ -59,7 +59,7 @@ function normalizePetFrame(frame = {}) {
   return {
     width: positiveInteger(frame.width, DEFAULT_PET_FRAME.width),
     height: positiveInteger(frame.height, DEFAULT_PET_FRAME.height),
-    columns: positiveInteger(frame.columns, DEFAULT_PET_FRAME.columns, 8),
+    columns: positiveInteger(frame.columns, DEFAULT_PET_FRAME.columns, 7),
     rows: positiveInteger(frame.rows, DEFAULT_PET_FRAME.rows, 8)
   };
 }

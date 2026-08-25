@@ -5,7 +5,7 @@
     <meta charset="UTF-8" />
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: file:"
     />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>TaskPet 设置</title>
@@ -68,22 +68,35 @@
               <select id="petSelect" class="modern-select"></select>
             </label>
 
+            <div id="currentPetPreview" class="current-pet-preview">
+              <div id="currentPetSpriteViewport" class="current-pet-sprite-viewport" aria-hidden="true">
+                <img id="currentPetSprite" alt="" />
+              </div>
+              <div class="row-copy">
+                <strong id="currentPetName">正在读取宠物…</strong>
+                <small id="currentPetDescription">—</small>
+              </div>
+              <button id="openCustomPetDialogButton" class="custom-pet-button" type="button">
+                ＋ 导入宠物
+              </button>
+            </div>
+
             <fieldset class="size-fieldset">
               <legend>桌宠大小</legend>
               <div class="size-presets">
                 <button class="size-option" type="button" data-pet-size="large" aria-pressed="false">
                   <span class="pet-preview preview-large" aria-hidden="true">🐾</span>
-                  <span><strong>大</strong><small>55% · 105 × 115</small></span>
+                  <span><strong>大</strong><small>110% · 105 × 115</small></span>
                   <i aria-hidden="true"></i>
                 </button>
                 <button class="size-option" type="button" data-pet-size="normal" aria-pressed="false">
                   <span class="pet-preview preview-normal" aria-hidden="true">🐾</span>
-                  <span><strong>正常</strong><small>50% · 96 × 104</small></span>
+                  <span><strong>正常</strong><small>100% · 96 × 104</small></span>
                   <i aria-hidden="true"></i>
                 </button>
                 <button class="size-option" type="button" data-pet-size="small" aria-pressed="false">
                   <span class="pet-preview preview-small" aria-hidden="true">🐾</span>
-                  <span><strong>小</strong><small>25% · 48 × 52</small></span>
+                  <span><strong>小</strong><small>50% · 48 × 52</small></span>
                   <i aria-hidden="true"></i>
                 </button>
               </div>
@@ -124,6 +137,54 @@
             </div>
           </div>
         </section>
+
+        <dialog id="customPetDialog" class="custom-pet-dialog" aria-labelledby="customPetDialogTitle">
+          <div class="pet-package-dialog">
+            <header>
+              <div>
+                <h2 id="customPetDialogTitle">获取或导入桌宠</h2>
+                <p>导入包含 <code>pet.json</code> 和 PNG/WebP 动画图集的 PetDex 兼容宠物包。</p>
+              </div>
+              <button id="closeCustomPetDialogButton" class="dialog-close-button" type="button" aria-label="关闭">×</button>
+            </header>
+
+            <section class="petdex-card" aria-labelledby="petdexTitle">
+              <div class="petdex-copy">
+                <span class="petdex-mark" aria-hidden="true">◈</span>
+                <div>
+                  <strong id="petdexTitle">PetDex 宠物社区</strong>
+                  <small>下载其他用户分享的 pet.zip，或使用 Hatch Pet 根据简短描述生成完整的 9 状态宠物。</small>
+                </div>
+              </div>
+              <div class="petdex-actions">
+                <button id="openPetDexButton" type="button">浏览 PetDex</button>
+                <button id="openPetDexCreateButton" class="primary" type="button">使用 Hatch Pet 创建</button>
+              </div>
+            </section>
+
+            <section
+              id="petZipDropZone"
+              class="pet-zip-drop-zone"
+              role="button"
+              tabindex="0"
+              aria-describedby="petZipDropHint"
+            >
+              <span class="drop-icon" aria-hidden="true">⇩</span>
+              <strong>拖拽 pet.zip 到这里</strong>
+              <small id="petZipDropHint">最多 50 MB；只读取 pet.json 及其引用的 PNG/WebP 图集</small>
+            </section>
+
+            <div class="pet-import-actions">
+              <button id="selectPetZipButton" class="primary" type="button">选择 ZIP 压缩包</button>
+              <button id="selectPetFolderButton" type="button">选择已解压文件夹</button>
+            </div>
+
+            <p class="pet-license-note">请只导入你有权使用的宠物素材。导入内容保存在本机，不会自动加入 TaskPet 发布包。</p>
+            <footer class="dialog-actions">
+              <button id="cancelCustomPetButton" type="button">关闭</button>
+            </footer>
+          </div>
+        </dialog>
 
         <section id="dataSection" class="settings-section" data-section="dataSection">
           <h1>数据</h1>

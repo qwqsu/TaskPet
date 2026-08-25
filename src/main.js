@@ -2,7 +2,7 @@
  * TaskPet 的 Electron Main Process 入口。
  * 负责桌宠窗口、托盘、宠物资源、桌宠 IPC 和 TaskSystem 生命周期；任务业务本身在 src/main/ 下。
  */
-const { app, BrowserWindow, Menu, Tray, ipcMain, nativeImage, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, shell } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -27,17 +27,30 @@ const {
   petMouseActionForGesture
 } = require("../build/shared/app-settings");
 const { LoginItemService } = require("../build/main/services/login-item-service");
+const {
+  inspectPetSpritesheetFile,
+  installPetPackageFromDirectory,
+  installPetPackageFromZip,
+  installPetPackageFromZipFile
+} = require("../build/main/services/custom-pet-service");
 const { createTrayMenuTemplate } = require("../build/main/windows/tray-menu");
 const { TaskSystem } = require("../build/main/task-system");
 
 const APP_NAME = "TaskPet";
 const APP_ID = "com.taskpet.shell";
 const GITHUB_URL = "https://github.com/qwqsu/TaskPet";
+const PETDEX_URL = "https://petdex.dev/zh";
+const PETDEX_CREATE_URL = "https://petdex.dev/zh/create";
+const APP_STARTED_AT_MS = Date.now();
+// 用户导入的宠物与任务数据库彼此独立：宠物默认进入 ~/.codex/pets，
+// 数据库和 settings.json 则由 Electron 的 userData 目录管理。
 const CODEX_HOME = process.env.CODEX_HOME || path.join(os.homedir(), ".codex");
 const LOGO_PATH = path.join(__dirname, "assets", "logo.png");
 const BUNDLED_PETS_ROOT = path.join(__dirname, "assets", "pets");
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
 const IS_LOGIN_ITEM_SMOKE_TEST = process.argv.includes("--smoke-test-login-item");
+const IS_NATIVE_PROCESS_SMOKE_TEST = process.argv.includes("--smoke-test-native-process");
+const IS_PERFORMANCE_SMOKE_TEST = process.argv.includes("--performance-smoke");
 const IS_DEBUG_PET_BOUNDS = process.argv.includes("--debug-pet-bounds");
 const IS_DEBUG_PET_WORKING = process.argv.includes("--debug-pet-working");
 const DEBUG_PET_SIZE = process.argv
@@ -47,6 +60,13 @@ const DEBUG_PET_BOUNDS_CAPTURE_PATH = process.argv
   .find((argument) => argument.startsWith("--debug-pet-bounds-capture="))
   ?.slice("--debug-pet-bounds-capture=".length);
 const SMOKE_USER_DATA_PATH = path.join(os.tmpdir(), "TaskPet-smoke");
+const PERFORMANCE_USER_DATA_PATH = path.join(
+  os.tmpdir(),
+  `TaskPet-performance-${process.pid}`
+);
+const PERFORMANCE_OUTPUT_PATH = process.argv
+  .find((argument) => argument.startsWith("--performance-output="))
+  ?.slice("--performance-output=".length);
 const LOGIN_ITEM_SMOKE_NAME = "TaskPet Login Item Smoke Test";
 const LOGIN_ITEM_SMOKE_ARGS = [];
 
@@ -61,7 +81,9 @@ let taskSystem = null;
 let petDragSession = null;
 let loginItemService = null;
 let logger = null;
+let appIcon = null;
 let petBoundsCaptureStarted = false;
+let performanceSmokeStarted = false;
 const smokeReady = { pet: false, panel: false, settings: false };
 
 const petState = new PetStateController({
@@ -83,6 +105,37 @@ function markSmokeReady(component, ready = true) {
   smokeTimeout = null;
   console.log("TaskPet smoke test ready (pet + task panel + settings + SQLite)");
   setTimeout(() => app.quit(), 100);
+}
+
+function startPerformanceSmoke() {
+  if (
+    !IS_PERFORMANCE_SMOKE_TEST
+    || performanceSmokeStarted
+    || !petWindow
+    || petWindow.isDestroyed()
+  ) {
+    return;
+  }
+
+  performanceSmokeStarted = true;
+  const { runPerformanceSmoke } = require("./performance-smoke");
+  const outputPath = path.resolve(
+    PERFORMANCE_OUTPUT_PATH || path.join("dist", "performance", "latest.json")
+  );
+  void runPerformanceSmoke({
+    app,
+    petWebContents: petWindow.webContents,
+    outputPath,
+    userDataPath: PERFORMANCE_USER_DATA_PATH,
+    startedAtMs: APP_STARTED_AT_MS
+  }).then((report) => {
+    process.exitCode = report.passed ? 0 : 1;
+    app.quit();
+  }).catch((error) => {
+    console.error(`TaskPet performance smoke failed: ${error.stack || error.message}`);
+    process.exitCode = 1;
+    app.quit();
+  });
 }
 
 function petWindowBounds() {
@@ -132,6 +185,9 @@ if (IS_SMOKE_TEST) {
   // 仅测试进程使用；正式应用仍保持 Chromium sandbox。
   app.commandLine.appendSwitch("no-sandbox");
   app.setPath("userData", SMOKE_USER_DATA_PATH);
+} else if (IS_PERFORMANCE_SMOKE_TEST) {
+  // 性能测试使用真实 GPU/SQLite，但数据完全隔离于用户的正式目录。
+  app.setPath("userData", PERFORMANCE_USER_DATA_PATH);
 }
 
 // ---------- 本地设置 ----------
@@ -179,16 +235,21 @@ function saveSettings() {
 }
 
 function createAppIcon() {
+  if (appIcon && !appIcon.isEmpty()) return appIcon;
   try {
     const image = nativeImage.createFromPath(LOGO_PATH);
-    if (!image.isEmpty()) return image;
+    if (!image.isEmpty()) {
+      appIcon = image;
+      return appIcon;
+    }
   } catch (error) {
     console.warn(`Failed to load TaskPet icon: ${error.message}`);
   }
 
-  return nativeImage.createFromDataURL(
+  appIcon = nativeImage.createFromDataURL(
     "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAGFBMVEUAAAAYIi9i5v9y8qaZfP/90WYfKz2xyNj28m6BAAAAB3RSTlMA///f39+fn6uU/gAAAEFJREFUeNqVj0kOwCAIBQO//2XnplkYQYJGk0BHyDKJg1xmEAjJQWYNZUdGgTYosAkfiBPwYQnKN3qHf6Snw6gudTW2DdqgAhoBA3kwAAAAAElFTkSuQmCC"
   );
+  return appIcon;
 }
 
 async function runPackagedLoginItemSmokeTest() {
@@ -228,6 +289,21 @@ async function runPackagedLoginItemSmokeTest() {
       enabled: false
     });
   }
+}
+
+async function runPackagedNativeProcessSmokeTest() {
+  if (process.platform !== "win32" || !app.isPackaged) {
+    throw new Error("Native process smoke test requires a packaged Windows build");
+  }
+  const {
+    createPlatformProcessProvider
+  } = require("../build/main/process/process-provider");
+  const provider = createPlatformProcessProvider();
+  const processes = await provider.listProcesses();
+  if (!processes.some((processInfo) => processInfo.pid === process.pid)) {
+    throw new Error("Packaged native process provider did not return the TaskPet process");
+  }
+  console.log(`TaskPet packaged native process smoke ready count=${processes.length}`);
 }
 
 // ---------- 宠物资源发现与状态广播 ----------
@@ -347,6 +423,8 @@ function getLicensesPath() {
 }
 
 function appSettingsSnapshot() {
+  // app.getVersion() 读取 package.json 的 version。设置页 aboutVersion 最终显示的
+  // 就是这里返回的 version，因此发布时只需要维护 package.json 这一处版本号。
   return {
     autoStart: loginItemService?.status ?? {
       supported: false,
@@ -358,11 +436,17 @@ function appSettingsSnapshot() {
     alwaysOnTop: settings.alwaysOnTop !== false,
     mouseBindings: { ...settings.mouseBindings },
     activePetKey: activePet?.key ?? null,
-    pets: pets.map((pet) => ({
-      key: pet.key,
-      displayName: pet.displayName,
-      sourceLabel: pet.sourceLabel
-    })),
+    pets: pets.map((pet) => {
+      const payload = toPetPayload(pet);
+      return {
+        key: pet.key,
+        displayName: pet.displayName,
+        description: pet.description,
+        sourceLabel: pet.sourceLabel,
+        spritesheetUrl: payload?.spritesheetUrl ?? "",
+        frame: payload?.frame ?? { width: 192, height: 208, columns: 8, rows: 9 }
+      };
+    }),
     dataDirectory: app.getPath("userData"),
     appName: APP_NAME,
     version: app.getVersion(),
@@ -416,6 +500,90 @@ async function applyTraySetting(input) {
   return snapshot;
 }
 
+function validatePetSpritesheet(filePath, manifest) {
+  const imageSize = inspectPetSpritesheetFile(filePath);
+  const expectedWidth = manifest.frame.width * manifest.frame.columns;
+  const expectedHeight = manifest.frame.height * manifest.frame.rows;
+  if (imageSize.width !== expectedWidth || imageSize.height !== expectedHeight) {
+    throw new Error(
+      `宠物图集尺寸应为 ${expectedWidth} × ${expectedHeight}，实际为 ${imageSize.width} × ${imageSize.height}`
+    );
+  }
+  if (imageSize.hasAlpha === false) {
+    throw new Error("宠物图集必须包含透明背景");
+  }
+}
+
+function activateImportedPet(installed) {
+  discoverPets();
+  if (!setActivePet(installed.key)) {
+    throw new Error("宠物已导入，但重新加载失败；请重新打开 TaskPet 后再试");
+  }
+  saveSettings();
+  rebuildTrayMenu();
+  logger?.info(`Pet package imported: ${installed.id}`);
+  return {
+    canceled: false,
+    petKey: installed.key,
+    settings: appSettingsSnapshot()
+  };
+}
+
+function petPackageInstallOptions() {
+  return {
+    petsRoot: getPetStorageInfo().petsRoot,
+    validateSpritesheet: validatePetSpritesheet
+  };
+}
+
+async function importPetZipFile(parentWindow) {
+  const dialogOptions = {
+    title: "选择 PetDex 宠物包",
+    buttonLabel: "导入宠物",
+    properties: ["openFile"],
+    filters: [{ name: "PetDex 宠物包", extensions: ["zip"] }]
+  };
+  const result = parentWindow && !parentWindow.isDestroyed()
+    ? await dialog.showOpenDialog(parentWindow, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions);
+  if (result.canceled || result.filePaths.length !== 1) {
+    return { canceled: true, petKey: null, settings: appSettingsSnapshot() };
+  }
+  const zipPath = result.filePaths[0];
+  if (!zipPath) throw new Error("未选择宠物 ZIP");
+  return activateImportedPet(installPetPackageFromZipFile({
+    ...petPackageInstallOptions(),
+    zipPath
+  }));
+}
+
+async function importDroppedPetZip(input) {
+  return activateImportedPet(installPetPackageFromZip({
+    ...petPackageInstallOptions(),
+    archive: input.bytes
+  }));
+}
+
+async function importPetFolder(parentWindow) {
+  const dialogOptions = {
+    title: "选择包含 pet.json 的宠物文件夹",
+    buttonLabel: "导入宠物",
+    properties: ["openDirectory"]
+  };
+  const result = parentWindow && !parentWindow.isDestroyed()
+    ? await dialog.showOpenDialog(parentWindow, dialogOptions)
+    : await dialog.showOpenDialog(dialogOptions);
+  if (result.canceled || result.filePaths.length !== 1) {
+    return { canceled: true, petKey: null, settings: appSettingsSnapshot() };
+  }
+  const sourceDirectory = result.filePaths[0];
+  if (!sourceDirectory) throw new Error("未选择宠物文件夹");
+  return activateImportedPet(installPetPackageFromDirectory({
+    ...petPackageInstallOptions(),
+    sourceDirectory
+  }));
+}
+
 async function openWindowsStartupApps() {
   if (process.platform !== "win32") {
     throw new Error("Windows 启动应用设置仅在 Windows 中可用");
@@ -425,6 +593,14 @@ async function openWindowsStartupApps() {
 
 async function openGitHub() {
   await shell.openExternal(GITHUB_URL);
+}
+
+async function openPetDex() {
+  await shell.openExternal(PETDEX_URL);
+}
+
+async function openPetDexCreate() {
+  await shell.openExternal(PETDEX_CREATE_URL);
 }
 
 async function openThirdPartyLicenses() {
@@ -504,7 +680,7 @@ function performPetMouseAction(action) {
       taskSystem?.showQuickAdd(petWindowBounds());
       break;
     case "open-settings":
-      taskSystem?.showSettings();
+      taskSystem?.toggleSettings();
       break;
     case "toggle-monitoring":
       if (taskSystem) taskSystem.setMonitoringPaused(!taskSystem.monitoringPaused);
@@ -643,6 +819,7 @@ function registerIpcHandlers() {
   ipcMain.on("taskpet:renderer-ready", (event) => {
     if (!petWindow || event.sender !== petWindow.webContents) return;
     if (IS_SMOKE_TEST) markSmokeReady("pet");
+    if (IS_PERFORMANCE_SMOKE_TEST) startPerformanceSmoke();
     if (
       IS_DEBUG_PET_BOUNDS
       && DEBUG_PET_BOUNDS_CAPTURE_PATH
@@ -698,6 +875,11 @@ app.whenReady().then(async () => {
     app.exit(0);
     return;
   }
+  if (IS_NATIVE_PROCESS_SMOKE_TEST) {
+    await runPackagedNativeProcessSmokeTest();
+    app.exit(0);
+    return;
+  }
   const dataPaths = getDataPaths();
   fs.mkdirSync(dataPaths.logsDirectory, { recursive: true });
   fs.mkdirSync(dataPaths.backupDirectory, { recursive: true });
@@ -732,6 +914,11 @@ app.whenReady().then(async () => {
     settings: {
       getSnapshot: () => appSettingsSnapshot(),
       update: (input) => applyAppSettings(input),
+      importPetZip: (parentWindow) => importPetZipFile(parentWindow),
+      importDroppedPetZip,
+      importPetFolder,
+      openPetDex,
+      openPetDexCreate,
       openStartupApps: openWindowsStartupApps,
       openGitHub,
       openLicenses: openThirdPartyLicenses
@@ -739,7 +926,11 @@ app.whenReady().then(async () => {
     logger
   });
   taskSystem.initialize();
-  if (IS_SMOKE_TEST) taskSystem.showSettings();
+  if (IS_SMOKE_TEST) {
+    // smoke 显式走首次打开路径，覆盖面板/设置窗口的懒创建。
+    taskSystem.showPanel(petWindowBounds());
+    taskSystem.showSettings();
+  }
   createTray();
   if (IS_SMOKE_TEST) {
     smokeTimeout = setTimeout(() => {

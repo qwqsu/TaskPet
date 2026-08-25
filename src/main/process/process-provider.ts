@@ -14,11 +14,27 @@ export class EmptyProcessProvider implements ProcessProvider {
   }
 }
 
+export class LazyProcessProvider implements ProcessProvider {
+  private provider: ProcessProvider | null = null;
+
+  constructor(private readonly createProvider: () => ProcessProvider) {}
+
+  listProcesses(): ProcessInfo[] | Promise<ProcessInfo[]> {
+    // 没有监控目标时 ProcessMonitor 不会调用这里，因此也不会加载 Koffi/native addon。
+    this.provider ??= this.createProvider();
+    return this.provider.listProcesses();
+  }
+}
+
 export function createPlatformProcessProvider(): ProcessProvider {
   if (process.platform !== "win32") return new EmptyProcessProvider();
-  // Keep the Win32 native dependency out of non-Windows startup paths.
-  const { WindowsProcessProvider } = require("./windows-process-provider") as typeof import("./windows-process-provider");
-  return new WindowsProcessProvider();
+  // Windows 也延迟到第一次真实扫描，空闲启动不解析 Koffi 和 kernel32 函数地址。
+  return new LazyProcessProvider(() => {
+    const {
+      WindowsProcessProvider
+    } = require("./windows-process-provider") as typeof import("./windows-process-provider");
+    return new WindowsProcessProvider();
+  });
 }
 
 export function toRunningPrograms(processes: readonly ProcessInfo[]): RunningProgram[] {

@@ -4,9 +4,12 @@
 import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import type { ZodTypeAny } from "zod";
 import {
+  DroppedPetZipInputSchema,
   UpdateAppSettingsInputSchema,
   type AppSettingsSnapshot,
   type DataActionResult,
+  type DroppedPetZipInput,
+  type ImportPetResult,
   type UpdateAppSettingsInput
 } from "../../shared/app-settings";
 import { EmptyTaskInputSchema } from "../../shared/task-schemas";
@@ -20,6 +23,11 @@ export interface RegisterSettingsIpcOptions {
   updateSettings: (
     input: UpdateAppSettingsInput
   ) => AppSettingsSnapshot | Promise<AppSettingsSnapshot>;
+  importPetZip: () => Promise<ImportPetResult>;
+  importDroppedPetZip: (input: DroppedPetZipInput) => Promise<ImportPetResult>;
+  importPetFolder: () => Promise<ImportPetResult>;
+  openPetDex: () => Promise<void>;
+  openPetDexCreate: () => Promise<void>;
   openDataDirectory: () => Promise<DataActionResult>;
   exportBackup: () => Promise<DataActionResult>;
   openStartupApps: () => Promise<void>;
@@ -69,6 +77,15 @@ export function registerSettingsIpc(options: RegisterSettingsIpcOptions): () => 
 
   handle(SETTINGS_CHANNELS.get, EmptyTaskInputSchema, options.getSettings);
   handle(SETTINGS_CHANNELS.update, UpdateAppSettingsInputSchema, options.updateSettings);
+  handle(SETTINGS_CHANNELS.importPetZip, EmptyTaskInputSchema, options.importPetZip);
+  handle(
+    SETTINGS_CHANNELS.importDroppedPetZip,
+    DroppedPetZipInputSchema,
+    options.importDroppedPetZip
+  );
+  handle(SETTINGS_CHANNELS.importPetFolder, EmptyTaskInputSchema, options.importPetFolder);
+  handle(SETTINGS_CHANNELS.openPetDex, EmptyTaskInputSchema, options.openPetDex);
+  handle(SETTINGS_CHANNELS.openPetDexCreate, EmptyTaskInputSchema, options.openPetDexCreate);
   handle(SETTINGS_CHANNELS.openDataDirectory, EmptyTaskInputSchema, options.openDataDirectory);
   handle(SETTINGS_CHANNELS.exportBackup, EmptyTaskInputSchema, options.exportBackup);
   handle(SETTINGS_CHANNELS.openStartupApps, EmptyTaskInputSchema, options.openStartupApps);

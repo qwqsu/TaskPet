@@ -1,3 +1,7 @@
+/*
+ * 独立设置窗口的视觉样式。
+ * 页面布局由 settings/index.html 定义；这里只负责侧栏、卡片、弹窗和响应式外观。
+ */
 :root {
   color-scheme: light;
   --accent: #7c3fe4;
@@ -25,7 +29,8 @@ body {
 
 button,
 select,
-input { font: inherit; }
+input,
+textarea { font: inherit; }
 
 button { color: inherit; }
 
@@ -293,6 +298,50 @@ button { color: inherit; }
 
 .pet-card { padding: 20px; }
 
+.current-pet-preview {
+  display: flex;
+  min-height: 112px;
+  align-items: center;
+  gap: 16px;
+  margin: -3px 0 18px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: linear-gradient(135deg, #fbf9ff, #fff);
+}
+
+.current-pet-preview[hidden] { display: none; }
+
+.current-pet-sprite-viewport {
+  position: relative;
+  overflow: hidden;
+  min-width: 40px;
+  flex: none;
+  align-self: center;
+  filter: drop-shadow(0 5px 7px rgba(51, 39, 69, 0.16));
+}
+
+.current-pet-sprite-viewport img {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: none;
+}
+
+.custom-pet-button {
+  min-width: 104px;
+  min-height: 38px;
+  flex: none;
+  border: 1px solid #cdb8f1;
+  border-radius: 10px;
+  color: var(--accent);
+  background: #faf7ff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.custom-pet-button:hover { border-color: var(--accent); }
+
 .select-field {
   display: grid;
   gap: 7px;
@@ -497,9 +546,179 @@ footer {
   font-size: 11px;
 }
 
+.custom-pet-dialog {
+  width: min(760px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  color: var(--ink);
+  background: #fff;
+  box-shadow: 0 24px 70px rgba(35, 28, 49, 0.24);
+}
+
+.custom-pet-dialog::backdrop {
+  background: rgba(35, 30, 45, 0.34);
+  backdrop-filter: blur(3px);
+}
+
+.pet-package-dialog {
+  display: grid;
+  gap: 18px;
+  padding: 22px;
+}
+
+.custom-pet-dialog header,
+.petdex-copy,
+.petdex-actions,
+.pet-import-actions,
+.dialog-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.custom-pet-dialog header { align-items: flex-start; }
+
+.custom-pet-dialog h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+
+.custom-pet-dialog header p,
+.pet-license-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.dialog-close-button {
+  width: 34px;
+  height: 34px;
+  flex: none;
+  border: 0;
+  border-radius: 9px;
+  color: #77727e;
+  background: #f5f3f7;
+  cursor: pointer;
+  font-size: 24px;
+  line-height: 1;
+}
+
+.petdex-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 14px;
+  border: 1px solid #ded3f2;
+  border-radius: 13px;
+  background: #faf8ff;
+}
+
+.petdex-copy { justify-content: flex-start; }
+.petdex-copy > div { display: grid; gap: 4px; }
+.petdex-copy small { color: var(--muted); font-size: 11px; line-height: 1.45; }
+
+.petdex-mark {
+  display: grid;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  place-items: center;
+  border-radius: 11px;
+  color: var(--accent);
+  background: #eee5ff;
+  font-size: 22px;
+}
+
+.petdex-actions { flex: none; gap: 8px; }
+
+.petdex-actions button,
+.pet-import-actions button,
+.dialog-actions button {
+  min-height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: #fff;
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.petdex-actions button:hover,
+.pet-import-actions button:hover,
+.dialog-actions button:hover { border-color: var(--accent); }
+
+.petdex-actions .primary,
+.pet-import-actions .primary {
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+.pet-zip-drop-zone {
+  display: grid;
+  min-height: 150px;
+  padding: 24px;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  border: 2px dashed #c9b4ec;
+  border-radius: 15px;
+  color: #514961;
+  background: #fcfaff;
+  cursor: pointer;
+  text-align: center;
+  transition: border-color 120ms ease, background 120ms ease, transform 120ms ease;
+}
+
+.pet-zip-drop-zone:hover,
+.pet-zip-drop-zone.drag-active {
+  border-color: var(--accent);
+  background: #f6f0ff;
+}
+
+.pet-zip-drop-zone.drag-active { transform: scale(1.006); }
+.pet-zip-drop-zone.importing { cursor: wait; opacity: 0.65; }
+.pet-zip-drop-zone small { color: var(--muted); font-size: 11px; }
+
+.drop-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  color: var(--accent);
+  background: #eee5ff;
+  font-size: 24px;
+}
+
+.pet-import-actions { justify-content: center; }
+
+.dialog-actions {
+  justify-content: flex-end;
+  padding: 0;
+  color: inherit;
+  text-align: initial;
+}
+
+.dialog-actions .primary {
+  border-color: var(--accent);
+  color: #fff;
+  background: var(--accent);
+}
+
+.petdex-actions button:disabled,
+.pet-import-actions button:disabled,
+.dialog-actions button:disabled { cursor: wait; opacity: 0.65; }
+
 button:focus-visible,
 select:focus-visible,
-input:focus-visible {
+input:focus-visible,
+textarea:focus-visible {
   outline: 3px solid rgba(124, 63, 228, 0.2);
   outline-offset: 2px;
 }
@@ -512,4 +731,9 @@ input:focus-visible {
   .about-card { align-items: flex-start; flex-direction: column; }
   .about-actions { width: 100%; grid-template-columns: 1fr 1fr; }
   .about-actions button { min-width: 0; }
+  .current-pet-preview { align-items: flex-start; flex-wrap: wrap; }
+  .current-pet-preview .row-copy { min-width: calc(100% - 110px); }
+  .petdex-card { align-items: stretch; flex-direction: column; }
+  .petdex-actions,
+  .pet-import-actions { align-items: stretch; flex-direction: column; }
 }

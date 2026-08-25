@@ -27,7 +27,14 @@ interface AppSettingsSnapshot {
   alwaysOnTop: boolean;
   mouseBindings: PetMouseBindings;
   activePetKey: string | null;
-  pets: Array<{ key: string; displayName: string; sourceLabel: string }>;
+  pets: Array<{
+    key: string;
+    displayName: string;
+    description: string;
+    sourceLabel: string;
+    spritesheetUrl: string;
+    frame: { width: number; height: number; columns: number; rows: number };
+  }>;
   dataDirectory: string;
   appName: string;
   version: string;
@@ -37,6 +44,12 @@ interface AppSettingsSnapshot {
 interface DataActionResult {
   canceled: boolean;
   filePath: string | null;
+}
+
+interface ImportPetResult {
+  canceled: boolean;
+  petKey: string | null;
+  settings: AppSettingsSnapshot;
 }
 
 type ApiResult<T> =
@@ -52,6 +65,14 @@ interface SettingsBridge {
     mouseBindings?: PetMouseBindings;
     activePetKey?: string;
   }): Promise<ApiResult<AppSettingsSnapshot>>;
+  importPetZip(): Promise<ApiResult<ImportPetResult>>;
+  importDroppedPetZip(input: {
+    fileName: string;
+    bytes: Uint8Array;
+  }): Promise<ApiResult<ImportPetResult>>;
+  importPetFolder(): Promise<ApiResult<ImportPetResult>>;
+  openPetDex(): Promise<ApiResult<void>>;
+  openPetDexCreate(): Promise<ApiResult<void>>;
   openDataDirectory(): Promise<ApiResult<DataActionResult>>;
   exportBackup(): Promise<ApiResult<DataActionResult>>;
   openStartupApps(): Promise<ApiResult<void>>;
@@ -68,7 +89,7 @@ interface SettingsWindow extends Window {
 const ACTION_OPTIONS: ReadonlyArray<{ value: PetMouseAction; label: string }> = [
   { value: "open-panel", label: "打开 / 关闭任务面板" },
   { value: "quick-add", label: "快速添加任务" },
-  { value: "open-settings", label: "打开设置" },
+  { value: "open-settings", label: "打开 / 关闭设置" },
   { value: "toggle-monitoring", label: "暂停 / 恢复任务监控" },
   { value: "recall-pet", label: "召回桌宠" },
   { value: "quit", label: "退出 TaskPet" },
@@ -92,6 +113,15 @@ const autoStartToggle = elementById<HTMLInputElement>("autoStartToggle");
 const autoStartHint = elementById<HTMLElement>("autoStartHint");
 const openStartupAppsButton = elementById<HTMLButtonElement>("openStartupAppsButton");
 const petSelect = elementById<HTMLSelectElement>("petSelect");
+const currentPetPreview = elementById<HTMLElement>("currentPetPreview");
+const currentPetSpriteViewport = elementById<HTMLElement>("currentPetSpriteViewport");
+const currentPetSprite = elementById<HTMLImageElement>("currentPetSprite");
+const currentPetName = elementById<HTMLElement>("currentPetName");
+const currentPetDescription = elementById<HTMLElement>("currentPetDescription");
+const customPetDialog = elementById<HTMLDialogElement>("customPetDialog");
+const petZipDropZone = elementById<HTMLElement>("petZipDropZone");
+const selectPetZipButton = elementById<HTMLButtonElement>("selectPetZipButton");
+const selectPetFolderButton = elementById<HTMLButtonElement>("selectPetFolderButton");
 const alwaysOnTopToggle = elementById<HTMLInputElement>("alwaysOnTopToggle");
 const leftClickAction = elementById<HTMLSelectElement>("leftClickAction");
 const doubleClickAction = elementById<HTMLSelectElement>("doubleClickAction");
@@ -100,8 +130,10 @@ const dataDirectoryPath = elementById<HTMLElement>("dataDirectoryPath");
 const aboutAppName = elementById<HTMLElement>("aboutAppName");
 const aboutVersion = elementById<HTMLElement>("aboutVersion");
 const STATUS_VISIBLE_MS = 5_000;
+const MAX_PET_ZIP_BYTES = 50 * 1024 * 1024;
 let currentSettings: AppSettingsSnapshot | null = null;
 let statusTimer: number | null = null;
+let petImportBusy = false;
 
 function setStatus(message = "", tone: "error" | "success" = "error"): void {
   if (statusTimer !== null) window.clearTimeout(statusTimer);
@@ -125,6 +157,27 @@ function fillActionSelect(select: HTMLSelectElement): void {
   }));
 }
 
+function renderCurrentPetPreview(snapshot: AppSettingsSnapshot): void {
+  const pet = snapshot.pets.find((candidate) => candidate.key === snapshot.activePetKey)
+    ?? snapshot.pets[0];
+  currentPetPreview.hidden = !pet;
+  if (!pet) return;
+
+  currentPetName.textContent = `${pet.displayName} · ${pet.sourceLabel}`;
+  currentPetDescription.textContent = pet.description || "暂无描述";
+  currentPetSprite.src = pet.spritesheetUrl;
+  const previewHeight = 86;
+  const scale = previewHeight / pet.frame.height;
+  currentPetSpriteViewport.style.width = `${Math.round(pet.frame.width * scale)}px`;
+  currentPetSpriteViewport.style.height = `${previewHeight}px`;
+  currentPetSprite.style.width = `${Math.round(
+    pet.frame.width * pet.frame.columns * scale
+  )}px`;
+  currentPetSprite.style.height = `${Math.round(
+    pet.frame.height * pet.frame.rows * scale
+  )}px`;
+}
+
 function render(snapshot: AppSettingsSnapshot): void {
   currentSettings = snapshot;
   autoStartToggle.checked = snapshot.autoStart.registered;
@@ -146,6 +199,7 @@ function render(snapshot: AppSettingsSnapshot): void {
   }));
   petSelect.disabled = snapshot.pets.length === 0;
   if (snapshot.activePetKey) petSelect.value = snapshot.activePetKey;
+  renderCurrentPetPreview(snapshot);
 
   for (const button of document.querySelectorAll<HTMLButtonElement>("[data-pet-size]")) {
     const active = button.dataset.petSize === snapshot.petSize;
@@ -159,6 +213,7 @@ function render(snapshot: AppSettingsSnapshot): void {
   dataDirectoryPath.textContent = snapshot.dataDirectory;
   dataDirectoryPath.title = snapshot.dataDirectory;
   aboutAppName.textContent = snapshot.appName;
+  // snapshot.version 来自主进程 app.getVersion()，其唯一维护入口是根目录 package.json。
   aboutVersion.textContent = `v${snapshot.version}`;
   elementById<HTMLButtonElement>("openGitHubButton").title = snapshot.githubUrl;
 }
@@ -203,6 +258,122 @@ alwaysOnTopToggle.addEventListener("change", () => {
 });
 petSelect.addEventListener("change", () => {
   if (petSelect.value) void updateSetting({ activePetKey: petSelect.value });
+});
+
+function closeCustomPetDialog(): void {
+  if (customPetDialog.open) customPetDialog.close();
+}
+
+elementById<HTMLButtonElement>("openCustomPetDialogButton").addEventListener("click", () => {
+  if (!customPetDialog.open) customPetDialog.showModal();
+  petZipDropZone.focus();
+});
+elementById<HTMLButtonElement>("closeCustomPetDialogButton").addEventListener(
+  "click",
+  closeCustomPetDialog
+);
+elementById<HTMLButtonElement>("cancelCustomPetButton").addEventListener(
+  "click",
+  closeCustomPetDialog
+);
+
+function setPetImportBusy(busy: boolean): void {
+  petImportBusy = busy;
+  petZipDropZone.classList.toggle("importing", busy);
+  petZipDropZone.setAttribute("aria-busy", String(busy));
+  selectPetZipButton.disabled = busy;
+  selectPetFolderButton.disabled = busy;
+}
+
+function finishPetImport(result: ImportPetResult): void {
+  if (result.canceled) return;
+  render(result.settings);
+  closeCustomPetDialog();
+  const importedPet = result.settings.pets.find((pet) => pet.key === result.petKey);
+  setStatus(`桌宠“${importedPet?.displayName ?? "自定义桌宠"}”已导入并启用`, "success");
+}
+
+async function runPetImport(
+  operation: () => Promise<ApiResult<ImportPetResult>>,
+  fallbackMessage: string
+): Promise<void> {
+  if (petImportBusy) return;
+  setPetImportBusy(true);
+  try {
+    setStatus();
+    finishPetImport(unwrap(await operation()));
+  } catch (error) {
+    setStatus(error instanceof Error ? error.message : fallbackMessage);
+  } finally {
+    setPetImportBusy(false);
+  }
+}
+
+async function importDroppedZip(file: File): Promise<void> {
+  if (!file.name.toLocaleLowerCase("en-US").endsWith(".zip")) {
+    setStatus("请拖入 .zip 宠物包");
+    return;
+  }
+  if (file.size === 0 || file.size > MAX_PET_ZIP_BYTES) {
+    setStatus("宠物 ZIP 为空或超过 50 MB");
+    return;
+  }
+  await runPetImport(async () => {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    return settingsApi.importDroppedPetZip({ fileName: file.name, bytes });
+  }, "无法导入拖拽的宠物 ZIP");
+}
+
+selectPetZipButton.addEventListener("click", () => {
+  void runPetImport(() => settingsApi.importPetZip(), "无法导入宠物 ZIP");
+});
+selectPetFolderButton.addEventListener("click", () => {
+  void runPetImport(() => settingsApi.importPetFolder(), "无法导入宠物文件夹");
+});
+petZipDropZone.addEventListener("click", () => selectPetZipButton.click());
+petZipDropZone.addEventListener("keydown", (event) => {
+  if (event.key === "Enter" || event.key === " ") {
+    event.preventDefault();
+    selectPetZipButton.click();
+  }
+});
+for (const eventName of ["dragenter", "dragover"] as const) {
+  petZipDropZone.addEventListener(eventName, (event) => {
+    event.preventDefault();
+    if (!petImportBusy) petZipDropZone.classList.add("drag-active");
+  });
+}
+petZipDropZone.addEventListener("dragleave", (event) => {
+  if (!(event.relatedTarget instanceof Node) || !petZipDropZone.contains(event.relatedTarget)) {
+    petZipDropZone.classList.remove("drag-active");
+  }
+});
+petZipDropZone.addEventListener("drop", (event) => {
+  event.preventDefault();
+  event.stopPropagation();
+  petZipDropZone.classList.remove("drag-active");
+  const files = event.dataTransfer?.files;
+  if (!files || files.length !== 1) {
+    setStatus("请一次只拖入一个 pet.zip");
+    return;
+  }
+  void importDroppedZip(files[0]!);
+});
+window.addEventListener("dragover", (event) => event.preventDefault());
+window.addEventListener("drop", (event) => {
+  event.preventDefault();
+  petZipDropZone.classList.remove("drag-active");
+});
+
+elementById<HTMLButtonElement>("openPetDexButton").addEventListener("click", () => {
+  void settingsApi.openPetDex().then(unwrap).catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "无法打开 PetDex");
+  });
+});
+elementById<HTMLButtonElement>("openPetDexCreateButton").addEventListener("click", () => {
+  void settingsApi.openPetDexCreate().then(unwrap).catch((error: unknown) => {
+    setStatus(error instanceof Error ? error.message : "无法打开 Hatch Pet 创建页");
+  });
 });
 for (const button of document.querySelectorAll<HTMLButtonElement>("[data-pet-size]")) {
   button.addEventListener("click", () => {

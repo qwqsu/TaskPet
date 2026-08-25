@@ -27,16 +27,32 @@ test("settings is an independent isolated window with the requested simple secti
     path.join(root, "src", "preload", "settings-preload.ts"),
     "utf8"
   );
+  const taskSystem = fs.readFileSync(
+    path.join(root, "src", "main", "task-system.ts"),
+    "utf8"
+  );
+  const main = fs.readFileSync(path.join(root, "src", "main.js"), "utf8");
   for (const label of ["常规", "桌宠", "数据", "关于", "打开数据目录", "导出备份", "第三方许可证"]) {
     assert.ok(html.includes(label));
   }
-  assert.match(html, /大<\/strong><small>55% · 105 × 115/);
-  assert.match(html, /正常<\/strong><small>50% · 96 × 104/);
-  assert.match(html, /小<\/strong><small>25% · 48 × 52/);
+  assert.match(html, /大<\/strong><small>110% · 105 × 115/);
+  assert.match(html, /正常<\/strong><small>100% · 96 × 104/);
+  assert.match(html, /小<\/strong><small>50% · 48 × 52/);
   assert.match(html, /id="settingsStatus"[^>]*hidden/);
   assert.match(html, /id="leftClickAction"/);
   assert.match(html, /id="doubleClickAction"/);
   assert.match(html, /id="rightClickAction"/);
+  assert.match(html, /id="openCustomPetDialogButton"/);
+  assert.match(html, /id="customPetDialog"/);
+  assert.match(html, /id="petZipDropZone"/);
+  assert.match(html, /拖拽 pet\.zip 到这里/);
+  assert.match(html, /id="selectPetZipButton"/);
+  assert.match(html, /id="selectPetFolderButton"/);
+  assert.match(html, /id="openPetDexButton"/);
+  assert.match(html, /id="openPetDexCreateButton"/);
+  assert.match(html, /Hatch Pet/);
+  assert.doesNotMatch(html, /生图提示词|customPetPrompt|copyCustomPetPromptButton/);
+  assert.match(html, /img-src 'self' data: file:/);
   assert.doesNotMatch(html, /显示状态气泡|扫描间隔|启动后自动开始监控/);
   assert.match(renderer, /进入 Windows 桌面后自动启动 TaskPet/);
   assert.match(
@@ -57,6 +73,19 @@ test("settings is an independent isolated window with the requested simple secti
   assert.match(styles, /\.settings-status\[hidden\]\s*\{[^}]*display:\s*none/s);
   assert.match(preload, /contextBridge\.exposeInMainWorld\("taskPetSettings"/);
   assert.match(preload, /taskpet:settings:open-startup-apps/);
+  assert.match(preload, /taskpet:settings:import-pet-zip/);
+  assert.match(preload, /taskpet:settings:import-dropped-pet-zip/);
+  assert.match(preload, /taskpet:settings:import-pet-folder/);
+  assert.match(preload, /taskpet:settings:open-petdex-create/);
+  assert.match(renderer, /打开 \/ 关闭设置/);
+  assert.match(renderer, /file\.arrayBuffer\(\)/);
+  assert.match(renderer, /new Uint8Array/);
+  assert.match(renderer, /MAX_PET_ZIP_BYTES = 50 \* 1024 \* 1024/);
+  assert.match(renderer, /settingsApi\.importPetFolder\(\)/);
+  assert.match(main, /https:\/\/petdex\.dev\/zh\/create/);
+  assert.match(taskSystem, /toggleSettings\(\): void/);
+  assert.match(taskSystem, /settingsWindow\.close\(\)/);
+  assert.match(main, /case "open-settings":\s*taskSystem\?\.toggleSettings\(\)/s);
   assert.doesNotMatch(renderer, /better-sqlite3|node:fs|child_process/);
   assert.doesNotMatch(preload, /better-sqlite3|node:fs|child_process/);
 });
