@@ -1,6 +1,6 @@
 {
   "name": "taskpet",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Local-first Windows desktop task assistant with a persistent pet companion.",
   "main": "src/main.js",
   "scripts": {
