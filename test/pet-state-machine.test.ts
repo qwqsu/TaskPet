@@ -76,7 +76,7 @@ test("pet state machine shows runtime, plays done, then restores working", () =>
   bus.emit({ type: "TASK_ACTIVE", task: snapshot() });
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "写代码执行中",
+    message: "写代码",
     detail: "1:05"
   });
 
@@ -105,7 +105,7 @@ test("pet state machine shows runtime, plays done, then restores working", () =>
   scheduler.fire(2_500);
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "整理资料执行中",
+    message: "整理资料",
     detail: "1:10"
   });
 
@@ -149,7 +149,7 @@ test("pet state machine rotates active task messages every three seconds", () =>
 
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "ChatGPT写代码执行中",
+    message: "ChatGPT写代码",
     detail: "1:05"
   });
   const firstRotationHandle = scheduler.pendingHandles(3_000);
@@ -171,14 +171,14 @@ test("pet state machine rotates active task messages every three seconds", () =>
   assert.deepEqual(scheduler.pendingHandles(3_000), firstRotationHandle);
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "ChatGPT写代码执行中",
+    message: "ChatGPT写代码",
     detail: "1:06"
   });
 
   scheduler.fire(3_000);
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "听音乐执行中",
+    message: "听音乐",
     detail: "0:42"
   });
   assert.equal(scheduler.pendingHandles(3_000).length, 1);
@@ -186,7 +186,7 @@ test("pet state machine rotates active task messages every three seconds", () =>
   scheduler.fire(3_000);
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "ChatGPT写代码执行中",
+    message: "ChatGPT写代码",
     detail: "1:06"
   });
 
@@ -196,7 +196,7 @@ test("pet state machine rotates active task messages every three seconds", () =>
   });
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "听音乐执行中",
+    message: "听音乐",
     detail: "0:42"
   });
   assert.equal(scheduler.pendingHandles(3_000).length, 0);
@@ -241,7 +241,7 @@ test("done temporarily pauses task rotation and resumes it afterward", () => {
   scheduler.fire(2_500);
   assert.deepEqual(states.at(-1), {
     state: "working",
-    message: "写代码执行中",
+    message: "写代码",
     detail: "1:05"
   });
   assert.equal(scheduler.pendingHandles(3_000).length, 1);

@@ -122,7 +122,7 @@ export class PetStateMachine {
     // message 与 detail 分开传递，长任务名被省略时不会挤掉计时。
     this.sink.setState(
       "working",
-      `${active.title}执行中`,
+      active.title,
       formatRuntimeSeconds(active.accumulatedSec)
     );
     this.scheduleRotation();
