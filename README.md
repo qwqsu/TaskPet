@@ -12,11 +12,19 @@
   本地优先 · Windows 桌面端 · 无账号 · 无云同步 · 不记录无关进程历史
 </p>
 
+<p align="center">
+ <strong>AI Vibe Coding </strong>
+</p>
+
+
+
 ## 项目简介
 
 TaskPet 是一个本地运行的桌面任务助手。你可以创建任务，并把自己选择的 Windows 程序绑定到任务上；当目标程序运行时，TaskPet 自动开始累计实际使用时间，程序退出后暂停累计，达到目标时长后自动完成任务。
 
-桌宠是 TaskPet 的常驻入口：它会随任务状态切换动画，也可以通过单击、双击和右键快速打开任务面板、设置、快速添加任务或暂停监控。
+<strong>使用说明</strong> ：左键打开/关闭任务面板   右键打开/关闭设置
+
+<strong>本人体验</strong>：我感觉还不错，打游戏时可以计时，只要你不动桌宠就会置顶在游戏页面上，还能一键启动游戏，差不多相当于一个任务管理和时间统计工具，多任务时，隔3s会切换显示，桌宠大小设置看情况再修改了，目前感觉良好
 
 ## 核心功能
 
@@ -30,7 +38,27 @@ TaskPet 是一个本地运行的桌面任务助手。你可以创建任务，并
 - Tray 快速添加、显示/隐藏、暂停/恢复监控和开机启动
 - 独立设置窗口、数据目录、SQLite 备份和第三方许可证入口
 - PetDex 兼容桌宠 ZIP 拖拽导入、文件选择和文件夹导入
-- Windows NSIS x64 安装包
+
+## 展示
+<p>  <strong>任务面板 </strong></p>
+<img width="436" height="499" alt="PixPin_2026-08-25_23-06-21" src="https://github.com/user-attachments/assets/40fcf663-1316-4336-b55b-0645d70b8dd2" />
+<p>  <strong>累计时长页面 </strong></p>
+<img width="431" height="502" alt="PixPin_2026-08-25_23-06-38" src="https://github.com/user-attachments/assets/f042affc-6086-4020-8450-527f9ac85a6a" />
+<p>  <strong>设置 </strong></p>
+<img width="801" height="536" alt="PixPin_2026-08-25_23-06-53" src="https://github.com/user-attachments/assets/1f7756ac-8417-497f-aa83-6be3732a880d" />
+<p>  <strong>桌宠替换页面 </strong></p>
+<img width="801" height="536" alt="PixPin_2026-08-25_23-11-08" src="https://github.com/user-attachments/assets/54a56d5d-29f7-4ced-be24-65096467ec60" />
+<p>  <strong>任务执行中画面 </strong></p>
+<img width="188" height="155" alt="PixPin_2026-08-25_23-12-32" src="https://github.com/user-attachments/assets/5e22d7ef-0c7e-4125-8486-37079c806b6e" />
+
+
+
+
+
+
+
+
+
 
 ## 工作原理
 
