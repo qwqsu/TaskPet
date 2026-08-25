@@ -54,11 +54,16 @@ jobs:
           RELEASE_TAG: ${{ inputs.tag }}
         run: |
           $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          
+          Get-ChildItem -Path dist -File |
+            ForEach-Object { Write-Host "构建产物：$($_.Name)" }
+          
           $installer = Get-ChildItem `
             -Path dist `
-            -Filter "TaskPet-$version-win-x64.exe" |
+            -File `
+            -Filter "TaskPet-$version-win32-x64.exe" |
             Select-Object -First 1
-
+          
           if (-not $installer) {
             throw "没有找到构建后的 Windows 安装包"
           }
