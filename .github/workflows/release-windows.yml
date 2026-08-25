@@ -1,0 +1,77 @@
+name: Build Windows Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "发布标签，例如 v1.0.1"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Test, build and publish
+    runs-on: windows-latest
+
+    steps:
+      - name: 获取代码
+        uses: actions/checkout@v6
+
+      - name: 配置 Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "20"
+          cache: npm
+
+      - name: 检查版本号
+        shell: pwsh
+        env:
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $expectedTag = "v$version"
+
+          if ($env:RELEASE_TAG -ne $expectedTag) {
+            throw "输入标签 $env:RELEASE_TAG 与 package.json 版本 $expectedTag 不一致"
+          }
+
+      - name: 安装依赖
+        run: npm ci
+
+      - name: 运行全部测试
+        run: npm test
+
+      - name: 构建 Windows 安装包
+        run: npm run build:win
+
+      - name: 生成校验文件并创建 Release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $installer = Get-ChildItem `
+            -Path dist `
+            -Filter "TaskPet-$version-win-x64.exe" |
+            Select-Object -First 1
+
+          if (-not $installer) {
+            throw "没有找到构建后的 Windows 安装包"
+          }
+
+          $checksumPath = "$($installer.FullName).sha256"
+          $hash = (Get-FileHash -Algorithm SHA256 $installer.FullName).Hash.ToLowerInvariant()
+
+          "$hash  $($installer.Name)" |
+            Set-Content -Path $checksumPath -Encoding ascii
+
+          gh release create "$env:RELEASE_TAG" `
+            "$($installer.FullName)" `
+            "$checksumPath" `
+            --target "$env:GITHUB_SHA" `
+            --title "TaskPet $env:RELEASE_TAG" `
+            --generate-notes
