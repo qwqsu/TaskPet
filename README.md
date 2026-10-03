@@ -52,15 +52,16 @@ TaskPet 是一个本地运行的桌面任务助手。你可以创建任务，并
 
 ## 展示
 <p>  <strong>任务面板 </strong></p>
-<img width="436" height="499" alt="PixPin_2026-08-25_23-06-21" src="https://github.com/user-attachments/assets/40fcf663-1316-4336-b55b-0645d70b8dd2" />
-<p>  <strong>累计时长页面 </strong></p>
-<img width="431" height="502" alt="PixPin_2026-08-25_23-06-38" src="https://github.com/user-attachments/assets/f042affc-6086-4020-8450-527f9ac85a6a" />
+<img width="565" height="669" alt="PixPin_2026-10-03_18-00-39" src="https://github.com/user-attachments/assets/280921f2-eb35-4129-a713-34d0032ee4f3" />
+
+<p>  <strong>轮盘界面 </strong></p>
+<img width="356" height="456" alt="PixPin_2026-10-03_18-02-04" src="https://github.com/user-attachments/assets/66122940-1215-45b0-9319-4bee88635454" />
+
 <p>  <strong>设置 </strong></p>
-<img width="801" height="536" alt="PixPin_2026-08-25_23-06-53" src="https://github.com/user-attachments/assets/1f7756ac-8417-497f-aa83-6be3732a880d" />
-<p>  <strong>桌宠替换页面 </strong></p>
-<img width="801" height="536" alt="PixPin_2026-08-25_23-11-08" src="https://github.com/user-attachments/assets/54a56d5d-29f7-4ced-be24-65096467ec60" />
-<p>  <strong>任务执行中画面 </strong></p>
-<img width="188" height="155" alt="PixPin_2026-08-25_23-12-32" src="https://github.com/user-attachments/assets/5e22d7ef-0c7e-4125-8486-37079c806b6e" />
+<img width="1066" height="713" alt="PixPin_2026-10-03_18-01-13" src="https://github.com/user-attachments/assets/5b12d317-4122-4380-a9d0-a664655ad624" />
+
+
+
 
 
 
