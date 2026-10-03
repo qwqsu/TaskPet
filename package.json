@@ -1,6 +1,6 @@
 {
   "name": "taskpet",
-  "version": "1.0.1",
+  "version": "1.1.0",
   "description": "Local-first Windows desktop task assistant with a persistent pet companion.",
   "main": "src/main.js",
   "scripts": {
@@ -10,6 +10,8 @@
     "dev": "npm run compile && electron .",
     "dev:bounds": "npm run compile && electron . --debug-pet-bounds",
     "smoke": "npm run compile && electron . --smoke-test",
+    "smoke:features": "npm run compile && electron . --smoke-test-v2",
+    "smoke:keyboard": "npm run compile && electron scripts/keyboard-input-smoke.cjs",
     "smoke:pet-zip": "npm run compile && electron scripts/pet-package-smoke.cjs",
     "perf:smoke": "npm run compile && node scripts/performance-smoke.cjs",
     "build": "npm test && npm run compile && electron-builder --dir",

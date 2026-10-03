@@ -2,7 +2,7 @@
  * TaskPet 的 Electron Main Process 入口。
  * 负责桌宠窗口、托盘、宠物资源、桌宠 IPC 和 TaskSystem 生命周期；任务业务本身在 src/main/ 下。
  */
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, shell } = require("electron");
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, shell, powerMonitor } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -20,8 +20,11 @@ const {
 } = require("./pet-window-options");
 const { createFileLogger } = require("./app-logger");
 const {
+  DEFAULT_PET_OPACITY,
   DEFAULT_PET_MOUSE_BINDINGS,
   PET_SIZE_PRESETS,
+  normalizeKeyboardMappingSettings,
+  normalizePetOpacity,
   normalizePetMouseBindings,
   normalizePetSize,
   petMouseActionForGesture
@@ -34,7 +37,28 @@ const {
   installPetPackageFromZipFile
 } = require("../build/main/services/custom-pet-service");
 const { createTrayMenuTemplate } = require("../build/main/windows/tray-menu");
+const {
+  createRadialMenuWindowOptions,
+  radialMenuShape,
+  radialMenuBoundsForPoint
+} = require("../build/main/windows/radial-menu-window");
+const {
+  createKeyBubbleWindowOptions,
+  keyBubbleBoundsForPet
+} = require("../build/main/windows/key-bubble-window");
+const {
+  KeyboardMappingMonitor,
+  UnsupportedKeyboardInputSource
+} = require("../build/main/input/keyboard-mapping-monitor");
+const { WindowsRawKeyboardSource } = require("../build/main/input/windows-raw-keyboard-source");
 const { TaskSystem } = require("../build/main/task-system");
+const { normalizeRadialSettings, normalizePetScale, RadialSettingsSchema } = require("../build/shared/radial-settings");
+const { UpdateAppSettingsInputSchema } = require("../build/shared/app-settings");
+const { launchRadialApp, validateRadialAppPath } = require("../build/main/services/radial-app-service");
+const { QqMusicService } = require("../build/main/services/qq-music-service");
+const musicService = new QqMusicService();
+let overlayTimer = null;
+let doubleClickDelayMs = 500;
 
 const APP_NAME = "TaskPet";
 const APP_ID = "com.taskpet.shell";
@@ -46,7 +70,9 @@ const LOGO_PATH = path.join(__dirname, "assets", "logo.png");
 // 开发态的默认宠物和用户导入宠物都放在仓库这个目录；打包后由
 // resolvePetStorageRoot 映射到 asar 外的 resources/src/assets/pets。
 const DEVELOPMENT_PETS_ROOT = path.join(__dirname, "assets", "pets");
-const IS_SMOKE_TEST = process.argv.includes("--smoke-test");
+const IS_P1_SMOKE = process.argv.includes("--smoke-test-p1");
+const IS_FEATURE_SMOKE = process.argv.includes("--smoke-test-v2") || IS_P1_SMOKE;
+const IS_SMOKE_TEST = process.argv.includes("--smoke-test") || IS_FEATURE_SMOKE;
 const IS_LOGIN_ITEM_SMOKE_TEST = process.argv.includes("--smoke-test-login-item");
 const IS_NATIVE_PROCESS_SMOKE_TEST = process.argv.includes("--smoke-test-native-process");
 const IS_PERFORMANCE_SMOKE_TEST = process.argv.includes("--performance-smoke");
@@ -71,6 +97,13 @@ const LOGIN_ITEM_SMOKE_ARGS = [];
 
 // Main Process 持有原生对象；Renderer 只能通过 preload 请求有限操作。
 let petWindow = null;
+let radialMenuWindow = null;
+let pendingRadialMenuBounds = null;
+let keyBubbleWindow = null;
+let keyBubbleReady = false;
+let pendingKeyBubbleLabels = [];
+let keyBubbleSequence = 0;
+let keyboardMappingMonitor = null;
 let tray = null;
 let pets = [];
 let activePet = null;
@@ -83,7 +116,13 @@ let logger = null;
 let appIcon = null;
 let petBoundsCaptureStarted = false;
 let performanceSmokeStarted = false;
-const smokeReady = { pet: false, panel: false, settings: false };
+const smokeReady = {
+  pet: false,
+  panel: false,
+  settings: false,
+  radialMenu: false,
+  keyBubbles: false
+};
 
 const petState = new PetStateController({
   onChange: (state) => broadcastPetState(state)
@@ -99,10 +138,25 @@ function markSmokeReady(component, ready = true) {
   }
 
   smokeReady[component] = true;
-  if (!smokeReady.pet || !smokeReady.panel || !smokeReady.settings) return;
+  if (
+    !smokeReady.pet
+    || !smokeReady.panel
+    || !smokeReady.settings
+    || !smokeReady.radialMenu
+    || !smokeReady.keyBubbles
+  ) return;
   clearTimeout(smokeTimeout);
   smokeTimeout = null;
-  console.log("TaskPet smoke test ready (pet + task panel + settings + SQLite)");
+  console.log(
+    "TaskPet smoke test ready (pet + task panel + settings + radial menu + key bubbles + SQLite)"
+  );
+  if (IS_FEATURE_SMOKE) {
+    void require(IS_P1_SMOKE ? "../scripts/p1-smoke.cjs" : "../scripts/features-smoke.cjs")({
+      app, BrowserWindow, applyAppSettings, appSettingsSnapshot, showRadialMenu, hideRadialMenu,
+      radialMenuWindow, petWindow, taskSystem, refreshOverlayOrder
+    }).then(() => app.exit(0)).catch(error => { console.error(error); app.exit(1); });
+    return;
+  }
   setTimeout(() => app.quit(), 100);
 }
 
@@ -142,7 +196,9 @@ function petWindowBounds() {
 }
 
 function currentPetSizePreset() {
-  return PET_SIZE_PRESETS[settings.petSize] || PET_SIZE_PRESETS.normal;
+  const ratio = normalizePetScale(settings.petScale, settings.petSize) / 100;
+  return Object.fromEntries(Object.entries(PET_SIZE_PRESETS.normal).map(([key, value]) =>
+    [key, key === "scale" ? value * ratio : Math.round(value * ratio)]));
 }
 
 function enforcePetWindowSize() {
@@ -171,6 +227,7 @@ function startPetWindowDrag() {
 function movePetWindowForDrag() {
   if (!petWindow || petWindow.isDestroyed() || !petDragSession) return false;
   petWindow.setBounds(petBoundsForCursor(petDragSession, screen.getCursorScreenPoint()));
+  positionKeyBubbleWindow();
   return true;
 }
 
@@ -204,14 +261,19 @@ function getSettingsPath() {
 }
 
 function loadSettings() {
-  const stored = readJson(getSettingsPath());
+  const stored = readJson(getSettingsPath()) || readJson(`${getSettingsPath()}.bak`);
   const raw = stored && typeof stored === "object" && !Array.isArray(stored) ? stored : {};
   const petSize = normalizePetSize(raw.petSize, raw.zoom);
   settings = {
     ...raw,
     petSize,
+    petScale: normalizePetScale(raw.petScale, petSize),
+    radialMenu: normalizeRadialSettings(raw.radialMenu),
+    petOpacity: normalizePetOpacity(raw.petOpacity),
+    ignoreMouseEvents: raw.ignoreMouseEvents === true,
     alwaysOnTop: raw.alwaysOnTop !== false,
-    mouseBindings: normalizePetMouseBindings(raw.mouseBindings)
+    mouseBindings: normalizePetMouseBindings(raw.mouseBindings),
+    keyboardMapping: normalizeKeyboardMappingSettings(raw.keyboardMapping)
   };
   // zoom 只作为旧设置迁移输入；三档尺寸从此只由 PET_SIZE_PRESETS 决定。
   delete settings.zoom;
@@ -220,13 +282,17 @@ function loadSettings() {
     && (DEBUG_PET_SIZE === "small" || DEBUG_PET_SIZE === "normal" || DEBUG_PET_SIZE === "large")
   ) {
     settings.petSize = DEBUG_PET_SIZE;
+    settings.petScale = normalizePetScale(undefined, DEBUG_PET_SIZE);
   }
 }
 
 function saveSettings() {
   try {
     fs.mkdirSync(path.dirname(getSettingsPath()), { recursive: true });
-    fs.writeFileSync(getSettingsPath(), JSON.stringify(settings, null, 2));
+    const temporary = `${getSettingsPath()}.tmp`;
+    fs.writeFileSync(temporary, JSON.stringify(settings, null, 2));
+    if (readJson(getSettingsPath())) fs.copyFileSync(getSettingsPath(), `${getSettingsPath()}.bak`);
+    fs.renameSync(temporary, getSettingsPath());
   } catch (error) {
     console.warn(`Failed to save TaskPet settings: ${error.message}`);
     logger?.warn("Failed to save settings", error);
@@ -442,8 +508,17 @@ function appSettingsSnapshot() {
       blockedByWindows: false
     },
     petSize: settings.petSize,
+    petOpacity: settings.petOpacity ?? DEFAULT_PET_OPACITY,
+    petScale: settings.petScale,
+    radialMenu: structuredClone(settings.radialMenu),
+    ignoreMouseEvents: settings.ignoreMouseEvents === true,
     alwaysOnTop: settings.alwaysOnTop !== false,
     mouseBindings: { ...settings.mouseBindings },
+    keyboardMapping: {
+      enabled: settings.keyboardMapping.enabled,
+      mappings: settings.keyboardMapping.mappings.map((mapping) => ({ ...mapping }))
+    },
+    keyboardInputSupported: keyboardMappingMonitor?.supported ?? process.platform === "win32",
     activePetKey: activePet?.key ?? null,
     pets: pets.map((pet) => {
       const payload = toPetPayload(pet);
@@ -475,20 +550,63 @@ async function applyAppSettings(input) {
 
   if (input.petSize !== undefined) {
     settings.petSize = input.petSize;
+    settings.petScale = normalizePetScale(undefined, input.petSize);
     resizePetWindow(input.petSize);
+    persistSettings = true;
+  }
+
+  if (input.petScale !== undefined) {
+    settings.petScale = normalizePetScale(input.petScale);
+    resizePetWindow(settings.petSize);
+    if (radialMenuWindow?.isVisible()) positionRadialMenu();
+    persistSettings = true;
+  }
+  if (input.radialMenu !== undefined) {
+    const next = normalizeRadialSettings(RadialSettingsSchema.parse(input.radialMenu));
+    // Validate newly selected targets, but keep existing missing shortcuts repairable.
+    for (const item of next.items) {
+      if (item.id.startsWith("app-") && item.path !== settings.radialMenu.items.find(old => old.id === item.id)?.path) {
+        await validateRadialAppPath(item.path);
+      }
+    }
+    settings.radialMenu = next;
+    if (!next.enabled) hideRadialMenu();
+    else if (radialMenuWindow?.isVisible()) positionRadialMenu();
+    persistSettings = true;
+  }
+  if (input.petOpacity !== undefined) {
+    settings.petOpacity = normalizePetOpacity(input.petOpacity);
+    if (petWindow && !petWindow.isDestroyed()) {
+      petWindow.setOpacity(settings.petOpacity / 100);
+    }
+    persistSettings = true;
+  }
+
+  if (input.ignoreMouseEvents !== undefined) {
+    settings.ignoreMouseEvents = input.ignoreMouseEvents;
+    if (petWindow && !petWindow.isDestroyed()) {
+      // Keep the pet hit-testable so double-clicks and drags remain available.
+      petWindow.setIgnoreMouseEvents(false);
+    }
     persistSettings = true;
   }
 
   if (input.alwaysOnTop !== undefined) {
     settings.alwaysOnTop = input.alwaysOnTop;
     if (petWindow && !petWindow.isDestroyed()) {
-      petWindow.setAlwaysOnTop(input.alwaysOnTop, "floating");
+      refreshOverlayOrder();
     }
     persistSettings = true;
   }
 
   if (input.mouseBindings !== undefined) {
     settings.mouseBindings = normalizePetMouseBindings(input.mouseBindings);
+    persistSettings = true;
+  }
+
+  if (input.keyboardMapping !== undefined) {
+    settings.keyboardMapping = normalizeKeyboardMappingSettings(input.keyboardMapping);
+    keyboardMappingMonitor?.update(settings.keyboardMapping);
     persistSettings = true;
   }
 
@@ -499,6 +617,7 @@ async function applyAppSettings(input) {
 
   if (persistSettings) saveSettings();
   rebuildTrayMenu();
+  broadcastRadialMenuState();
   return appSettingsSnapshot();
 }
 
@@ -634,7 +753,9 @@ function createPetWindow() {
     workAreas
   }));
 
-  petWindow.setAlwaysOnTop(settings.alwaysOnTop !== false, "floating");
+  refreshOverlayOrder();
+  petWindow.setOpacity((settings.petOpacity ?? DEFAULT_PET_OPACITY) / 100);
+  petWindow.setIgnoreMouseEvents(false);
   petWindow.loadFile(path.join(__dirname, "renderer", "index.html"));
   petWindow.once("ready-to-show", () => {
     if (!IS_SMOKE_TEST) petWindow.show();
@@ -645,9 +766,247 @@ function createPetWindow() {
     if (IS_SMOKE_TEST) app.exit(1);
   });
   petWindow.on("closed", () => {
+    keyboardMappingMonitor?.close();
+    keyboardMappingMonitor = null;
+    keyBubbleWindow?.hide();
     petDragSession = null;
     petWindow = null;
   });
+  petWindow.on("move", () => {
+    positionKeyBubbleWindow();
+    if (radialMenuWindow?.isVisible()) positionRadialMenu();
+  });
+  petWindow.on("resize", positionKeyBubbleWindow);
+  petWindow.on("focus", () => {
+    if (process.platform !== "darwin" && radialMenuWindow?.isVisible()) radialMenuWindow.moveTop();
+  });
+}
+
+// ---------- 独立径向菜单与按键气泡 ----------
+
+function radialMenuState() {
+  return {
+    petVisible: Boolean(petWindow && !petWindow.isDestroyed() && petWindow.isVisible()),
+    ignoreMouseEvents: settings.ignoreMouseEvents === true,
+    petOpacity: settings.petOpacity ?? DEFAULT_PET_OPACITY,
+    petScale: settings.petScale,
+    alwaysOnTop: settings.alwaysOnTop !== false,
+    monitoringPaused: taskSystem?.monitoringPaused ?? false,
+    radialMenu: structuredClone(settings.radialMenu)
+  };
+}
+
+function isRadialMenuSender(event) {
+  return Boolean(
+    radialMenuWindow
+    && !radialMenuWindow.isDestroyed()
+    && event?.sender === radialMenuWindow.webContents
+  );
+}
+
+function isKeyBubbleSender(event) {
+  return Boolean(
+    keyBubbleWindow
+    && !keyBubbleWindow.isDestroyed()
+    && event?.sender === keyBubbleWindow.webContents
+  );
+}
+
+function broadcastRadialMenuState() {
+  if (!radialMenuWindow || radialMenuWindow.isDestroyed()) return;
+  radialMenuWindow.webContents.send("taskpet:radial-menu:changed", radialMenuState());
+}
+
+function hideRadialMenu() {
+  pendingRadialMenuBounds = null;
+  if (radialMenuWindow && !radialMenuWindow.isDestroyed()) radialMenuWindow.hide();
+}
+
+function positionRadialMenu() {
+  const petBounds = petWindowBounds();
+  const point = petBounds ? {x: petBounds.x + Math.floor(petBounds.width / 2), y: petBounds.y + Math.floor(currentPetSizePreset().petHeight / 2)} : screen.getCursorScreenPoint();
+  const workArea = screen.getDisplayNearestPoint(point).workArea;
+  const preset = currentPetSizePreset();
+  const safeDiameter = Math.hypot(preset.petWidth, preset.petHeight) + 112;
+  const size = Math.round(safeDiameter + (settings.radialMenu.scale - 50) * 4.4);
+  const bounds = radialMenuBoundsForPoint(point, workArea, size);
+  if (petBounds && petWindow) {
+    const x = bounds.x + Math.floor(bounds.width / 2) - Math.floor(petBounds.width / 2);
+    const y = bounds.y + Math.floor(bounds.width / 2) - Math.floor(currentPetSizePreset().petHeight / 2);
+    if (x !== petBounds.x || y !== petBounds.y) petWindow.setPosition(x, y);
+  }
+  if (radialMenuWindow && !radialMenuWindow.isDestroyed()) {
+    radialMenuWindow.setBounds(bounds);
+    if (process.platform === "win32" || process.platform === "linux") {
+      const body = petWindow?.getBounds();
+      radialMenuWindow.setShape(body && petWindow.isVisible() ? radialMenuShape(bounds.width,bounds.height,{
+        x:body.x-bounds.x+Math.round((preset.windowWidth-preset.petWidth)/2),
+        y:body.y-bounds.y+preset.petTop,
+        width:preset.petWidth,height:preset.petHeight
+      }) : [{x:0,y:0,width:bounds.width,height:bounds.height}]);
+    }
+  }
+  return bounds;
+}
+
+function refreshOverlayOrder() {
+  for (const overlay of [radialMenuWindow, petWindow, keyBubbleWindow]) {
+    if (!overlay || overlay.isDestroyed()) continue;
+    try {
+      const topmost = settings.alwaysOnTop !== false;
+      if (overlay.isAlwaysOnTop() !== topmost) overlay.setAlwaysOnTop(topmost, "screen-saver");
+    } catch (error) { logger?.warn("Unable to refresh overlay order", error); }
+  }
+}
+
+async function chooseRadialApp() {
+  const result = await dialog.showOpenDialog({title: "绑定轮盘应用", properties: ["openFile"], filters: [{name: "应用程序和快捷方式", extensions: ["exe", "lnk"]}]});
+  if (result.canceled || !result.filePaths[0]) return null;
+  const target = await validateRadialAppPath(result.filePaths[0]);
+  return {path: target, name: path.basename(target, path.extname(target))};
+}
+
+const appIconCache = new Map();
+async function radialAppIcon(id) {
+  const item = settings.radialMenu.items.find(entry => entry.id === id && entry.id.startsWith("app-"));
+  if (!item?.path) return null;
+  if (appIconCache.has(item.path)) return appIconCache.get(item.path);
+  try {
+    await validateRadialAppPath(item.path);
+    const icon = await app.getFileIcon(item.path, {size: "small"});
+    const data = icon.isEmpty() ? null : icon.toDataURL();
+    if (appIconCache.size >= 64) appIconCache.clear();
+    appIconCache.set(item.path, data);
+    return data;
+  } catch { return null; }
+}
+
+function createRadialMenuWindow() {
+  if (radialMenuWindow && !radialMenuWindow.isDestroyed()) return radialMenuWindow;
+  const nextWindow = new BrowserWindow(createRadialMenuWindowOptions({
+    preloadPath: path.join(__dirname, "..", "build", "preload", "radial-menu-preload.js"),
+    icon: createAppIcon()
+  }));
+  radialMenuWindow = nextWindow;
+  refreshOverlayOrder();
+  nextWindow.loadFile(path.join(__dirname, "renderer", "radial-menu", "index.html"));
+  nextWindow.webContents.once("did-finish-load", () => markSmokeReady("radialMenu"));
+  nextWindow.once("ready-to-show", () => {
+    if (!pendingRadialMenuBounds || nextWindow.isDestroyed()) return;
+    nextWindow.setBounds(pendingRadialMenuBounds);
+    pendingRadialMenuBounds = null;
+    nextWindow.show();
+    nextWindow.focus();
+    if (process.platform === "darwin") petWindow?.moveTop();
+    broadcastRadialMenuState();
+  });
+  nextWindow.on("blur", () => {
+    setTimeout(() => {
+      if (nextWindow.isDestroyed() || !nextWindow.isVisible()) return;
+      const focused = BrowserWindow.getFocusedWindow();
+      if (focused !== nextWindow && focused !== petWindow) hideRadialMenu();
+    }, 80);
+  });
+  nextWindow.on("closed", () => {
+    if (radialMenuWindow === nextWindow) radialMenuWindow = null;
+  });
+  return nextWindow;
+}
+
+function showRadialMenu() {
+  if (!settings.radialMenu.enabled) return false;
+  const menuWindow = createRadialMenuWindow();
+  const bounds = positionRadialMenu();
+  if (menuWindow.webContents.isLoading()) {
+    pendingRadialMenuBounds = bounds;
+    return true;
+  }
+  menuWindow.setBounds(bounds);
+  menuWindow.show();
+  refreshOverlayOrder();
+  menuWindow.focus();
+  if (process.platform === "darwin") petWindow?.moveTop();
+  broadcastRadialMenuState();
+  return true;
+}
+
+function togglePetVisibility() {
+  if (!petWindow || petWindow.isDestroyed()) return false;
+  if (petWindow.isVisible()) {
+    petWindow.hide();
+    keyBubbleWindow?.hide();
+  } else {
+    petWindow.show();
+  }
+  broadcastRadialMenuState();
+  return true;
+}
+
+function createKeyBubbleWindow() {
+  if (keyBubbleWindow && !keyBubbleWindow.isDestroyed()) return keyBubbleWindow;
+  const nextWindow = new BrowserWindow(createKeyBubbleWindowOptions({
+    preloadPath: path.join(__dirname, "..", "build", "preload", "key-bubble-preload.js"),
+    icon: createAppIcon()
+  }));
+  keyBubbleWindow = nextWindow;
+  keyBubbleReady = false;
+  refreshOverlayOrder();
+  nextWindow.setIgnoreMouseEvents(true, { forward: true });
+  nextWindow.loadFile(path.join(__dirname, "renderer", "key-bubbles", "index.html"));
+  nextWindow.on("closed", () => {
+    if (keyBubbleWindow === nextWindow) {
+      keyBubbleWindow = null;
+      keyBubbleReady = false;
+      pendingKeyBubbleLabels = [];
+    }
+  });
+  return nextWindow;
+}
+
+function positionKeyBubbleWindow() {
+  if (
+    !petWindow
+    || petWindow.isDestroyed()
+    || !keyBubbleWindow
+    || keyBubbleWindow.isDestroyed()
+  ) return;
+  const petBounds = petWindow.getBounds();
+  const workArea = screen.getDisplayMatching(petBounds).workArea;
+  keyBubbleWindow.setBounds(keyBubbleBoundsForPet(petBounds, workArea));
+}
+
+function pushKeyBubble(label) {
+  if (!petWindow || petWindow.isDestroyed() || !petWindow.isVisible()) return;
+  const safeLabel = [...String(label)].slice(0, 8).join("");
+  if (!safeLabel) return;
+  const bubbleWindow = createKeyBubbleWindow();
+  positionKeyBubbleWindow();
+  bubbleWindow.showInactive();
+  if (!keyBubbleReady || bubbleWindow.webContents.isLoading()) {
+    pendingKeyBubbleLabels.push(safeLabel);
+    pendingKeyBubbleLabels = pendingKeyBubbleLabels.slice(-3);
+    return;
+  }
+  keyBubbleSequence += 1;
+  bubbleWindow.webContents.send("taskpet:key-bubbles:push", {
+    label: safeLabel,
+    sequence: keyBubbleSequence
+  });
+}
+
+function initializeKeyboardMappingMonitor() {
+  keyboardMappingMonitor?.close();
+  const source = process.platform === "win32" && petWindow && !petWindow.isDestroyed()
+    ? new WindowsRawKeyboardSource(petWindow, (error) => {
+      logger?.warn("Windows raw keyboard input failed", error);
+    })
+    : new UnsupportedKeyboardInputSource();
+  keyboardMappingMonitor = new KeyboardMappingMonitor(
+    source,
+    ({ label }) => pushKeyBubble(label),
+    (error) => logger?.warn("Keyboard mapping monitor failed", error)
+  );
+  keyboardMappingMonitor.update(settings.keyboardMapping);
 }
 
 function saveWindowBounds() {
@@ -659,10 +1018,11 @@ function saveWindowBounds() {
 function resizePetWindow(petSize) {
   if (!petWindow || petWindow.isDestroyed()) return { ok: false };
 
-  const preset = PET_SIZE_PRESETS[petSize] || PET_SIZE_PRESETS.normal;
+  const preset = currentPetSizePreset();
   const { width, height } = getPetWindowSize(preset);
   petWindow.setContentSize(width, height);
   settings.windowBounds = petWindow.getBounds();
+  positionKeyBubbleWindow();
   broadcastPetSize();
   return { ok: true, petSize, bounds: petWindow.getBounds() };
 }
@@ -673,6 +1033,7 @@ function recallPetWindow() {
   const bounds = getCenteredPetBounds(workArea, currentPetSizePreset());
   petWindow.setContentBounds(bounds);
   petWindow.show();
+  positionKeyBubbleWindow();
   settings.windowBounds = petWindow.getBounds();
   saveSettings();
   logger?.info("Pet recalled to the primary display center");
@@ -689,6 +1050,9 @@ function performPetMouseAction(action) {
       break;
     case "open-settings":
       taskSystem?.toggleSettings();
+      break;
+    case "open-radial-menu":
+      showRadialMenu();
       break;
     case "toggle-monitoring":
       if (taskSystem) taskSystem.setMonitoringPaused(!taskSystem.monitoringPaused);
@@ -710,46 +1074,24 @@ function performPetMouseAction(action) {
 // ---------- 系统托盘 ----------
 
 function petTrayItems() {
-  const items = pets.map((pet) => ({
+  return pets.map((pet) => ({
     label: pet.displayName,
     type: "radio",
     checked: pet.key === activePet?.key,
     click: () => selectPet(pet.key)
   }));
-
-  if (items.length === 0) {
-    items.push({ label: "未发现可用宠物", enabled: false });
-  }
-
-  return [
-    ...items,
-    { type: "separator" },
-    { label: "重新加载宠物", click: () => reloadPets() },
-    { label: "打开宠物目录", click: () => openPetsFolder() }
-  ];
 }
 
 function buildTrayMenu() {
-  const autoStart = loginItemService?.status ?? {
-    supported: false,
-    registered: false
-  };
   const template = createTrayMenuTemplate({
-    monitorPaused: taskSystem?.monitoringPaused ?? false,
-    autoStart: autoStart.registered,
-    autoStartSupported: autoStart.supported
+    ignoreMouseEvents: settings.ignoreMouseEvents === true
   }, {
-    openPanel: () => taskSystem?.showPanel(petWindowBounds()),
     quickAddTask: () => taskSystem?.showQuickAdd(petWindowBounds()),
-    togglePet: () => {
-      if (!petWindow || petWindow.isDestroyed()) return;
-      petWindow.isVisible() ? petWindow.hide() : petWindow.show();
-    },
+    togglePet: () => togglePetVisibility(),
     recallPet: () => recallPetWindow(),
-    setMonitoringPaused: (paused) => taskSystem?.setMonitoringPaused(paused),
-    setAutoStart: (enabled) => {
-      void applyTraySetting({ autoStart: enabled }).catch((error) => {
-        logger?.warn("Failed to change auto start from Tray", error);
+    setIgnoreMouseEvents: (enabled) => {
+      void applyTraySetting({ ignoreMouseEvents: enabled }).catch((error) => {
+        logger?.warn("Failed to change mouse passthrough from Tray", error);
         rebuildTrayMenu();
       });
     },
@@ -770,12 +1112,61 @@ function createTray() {
   tray.setToolTip(APP_NAME);
   tray.setContextMenu(buildTrayMenu());
   tray.on("click", () => {
-    if (!petWindow || petWindow.isDestroyed()) return;
-    petWindow.isVisible() ? petWindow.hide() : petWindow.show();
+    togglePetVisibility();
   });
 }
 
 // ---------- 桌宠 preload IPC ----------
+
+const RADIAL_MENU_ACTIONS = new Set([
+  "open-panel", "quick-add", "toggle-monitoring", "toggle-always-on-top",
+  "open-settings",
+  "toggle-pet",
+  "toggle-ignore-mouse",
+  "open-opacity-settings",
+  "quit"
+]);
+
+async function performRadialMenuAction(action) {
+  try {
+  if (typeof action !== "string") return {ok: false, error: "无效操作"};
+  if (action.startsWith("app-")) {
+    await launchRadialApp(action, settings.radialMenu, target => shell.openPath(target));
+    hideRadialMenu();
+    return {ok: true};
+  }
+  if (!RADIAL_MENU_ACTIONS.has(action)) return {ok: false, error: "不支持此操作"};
+  switch (action) {
+    case "open-panel":
+      hideRadialMenu(); taskSystem?.showPanel(petWindowBounds()); break;
+    case "quick-add":
+      hideRadialMenu(); taskSystem?.showQuickAdd(petWindowBounds()); break;
+    case "toggle-monitoring":
+      taskSystem?.setMonitoringPaused(!taskSystem.monitoringPaused); broadcastRadialMenuState(); break;
+    case "toggle-always-on-top":
+      await applyTraySetting({alwaysOnTop: settings.alwaysOnTop === false}); break;
+    case "open-settings":
+      hideRadialMenu();
+      taskSystem?.showSettings();
+      break;
+    case "toggle-pet":
+      hideRadialMenu();
+      togglePetVisibility();
+      break;
+    case "toggle-ignore-mouse":
+      await applyTraySetting({ ignoreMouseEvents: settings.ignoreMouseEvents !== true });
+      break;
+    case "open-opacity-settings":
+      hideRadialMenu();
+      taskSystem?.showSettings("interactionSection");
+      break;
+    case "quit":
+      app.quit();
+      break;
+  }
+  return {ok: true};
+  } catch (error) { return {ok: false, error: error instanceof Error ? error.message : "操作失败，请重试"}; }
+}
 
 function registerIpcHandlers() {
   ipcMain.handle("taskpet:get-initial-state", (event) => isPetWindowSender(event) ? ({
@@ -783,12 +1174,14 @@ function registerIpcHandlers() {
     config: {
       petSize: settings.petSize,
       preset: currentPetSizePreset(),
-      debugPetBounds: IS_DEBUG_PET_BOUNDS
+      debugPetBounds: IS_DEBUG_PET_BOUNDS,
+      doubleClickDelayMs
     }
   }) : null);
 
   ipcMain.on("taskpet:start-window-drag", (event) => {
     if (!isPetWindowSender(event)) return;
+    if (radialMenuWindow?.isVisible()) hideRadialMenu();
     startPetWindowDrag();
   });
 
@@ -814,6 +1207,8 @@ function registerIpcHandlers() {
 
   ipcMain.handle("taskpet:pet-mouse-action", (event, gesture) => {
     if (!isPetWindowSender(event)) return false;
+    if (gesture === "left" && settings.ignoreMouseEvents) return false;
+    if (radialMenuWindow?.isVisible()) hideRadialMenu();
     const bindings = settings.mouseBindings || DEFAULT_PET_MOUSE_BINDINGS;
     const action = petMouseActionForGesture(bindings, gesture);
     return action ? performPetMouseAction(action) : false;
@@ -865,6 +1260,50 @@ function registerIpcHandlers() {
       }, 250);
     }
   });
+
+  ipcMain.handle("taskpet:radial-menu:get-state", (event) => (
+    isRadialMenuSender(event) ? radialMenuState() : null
+  ));
+  ipcMain.handle("taskpet:radial-menu:action", (event, action) => (
+    isRadialMenuSender(event) ? performRadialMenuAction(action) : {ok: false, error: "无效窗口"}
+  ));
+  ipcMain.handle("taskpet:radial-menu:update", async (event, raw) => {
+    if (!isRadialMenuSender(event)) throw new Error("无效窗口");
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) throw new Error("无效调节请求");
+    if (raw.radialMenu) {
+      if (Object.keys(raw.radialMenu).some(key => !["opacity", "scale"].includes(key))) throw new Error("无效轮盘调节项");
+      raw = {...raw, radialMenu: {...settings.radialMenu, ...raw.radialMenu}};
+    }
+    const parsed = UpdateAppSettingsInputSchema.parse(raw);
+    if (Object.keys(parsed).some(key => !["petOpacity", "petScale", "radialMenu"].includes(key))) throw new Error("不支持的轮盘设置");
+    await applyTraySetting(parsed);
+    return radialMenuState();
+  });
+  ipcMain.handle("taskpet:radial-menu:music", (event, command) => {
+    if (!isRadialMenuSender(event) || !["status", "previous", "toggle", "next"].includes(command)) return {available: false, error: "无效音乐请求"};
+    return musicService.execute(command);
+  });
+  ipcMain.handle("taskpet:radial-menu:icon", (event, id) => isRadialMenuSender(event) && typeof id === "string" ? radialAppIcon(id) : null);
+  ipcMain.on("taskpet:radial-menu:close", (event) => {
+    if (isRadialMenuSender(event)) hideRadialMenu();
+  });
+
+  ipcMain.on("taskpet:key-bubbles:ready", (event) => {
+    if (!isKeyBubbleSender(event)) return;
+    keyBubbleReady = true;
+    markSmokeReady("keyBubbles");
+    positionKeyBubbleWindow();
+    const labels = pendingKeyBubbleLabels;
+    pendingKeyBubbleLabels = [];
+    for (const label of labels) pushKeyBubble(label);
+  });
+  ipcMain.on("taskpet:key-bubbles:empty", (event, sequence) => {
+    if (
+      isKeyBubbleSender(event)
+      && Number.isSafeInteger(sequence)
+      && sequence === keyBubbleSequence
+    ) keyBubbleWindow.hide();
+  });
 }
 
 function configureMacMenuBarMode() {
@@ -901,9 +1340,15 @@ app.whenReady().then(async () => {
     appName: APP_NAME
   });
   loadSettings();
+  saveSettings();
+  if (process.platform === "win32") {
+    try { doubleClickDelayMs = require("koffi").load("user32.dll").func("uint32_t __stdcall GetDoubleClickTime()")(); }
+    catch { /* Windows default if native timing is unavailable. */ }
+  }
   discoverPets();
   registerIpcHandlers();
   createPetWindow();
+  initializeKeyboardMappingMonitor();
   taskSystem = new TaskSystem({
     databasePath: IS_SMOKE_TEST
       ? ":memory:"
@@ -918,8 +1363,11 @@ app.whenReady().then(async () => {
     onPetState: (state, message, detail) => petState.setState(state, { message, detail }),
     onPanelReady: (ready) => markSmokeReady("panel", ready),
     onSettingsReady: (ready) => markSmokeReady("settings", ready),
-    onMonitoringStateChanged: () => rebuildTrayMenu(),
+    onMonitoringStateChanged: () => { rebuildTrayMenu(); broadcastRadialMenuState(); },
     settings: {
+      chooseRadialApp,
+      radialAppIcon,
+      testRadialApp: id => launchRadialApp(id, settings.radialMenu, target => shell.openPath(target)),
       getSnapshot: () => appSettingsSnapshot(),
       update: (input) => applyAppSettings(input),
       importPetZip: (parentWindow) => importPetZipFile(parentWindow),
@@ -929,7 +1377,8 @@ app.whenReady().then(async () => {
       openPetDexCreate,
       openStartupApps: openWindowsStartupApps,
       openGitHub,
-      openLicenses: openThirdPartyLicenses
+      openLicenses: openThirdPartyLicenses,
+      setKeyboardCaptureActive: (active) => keyboardMappingMonitor?.setSuppressed(active)
     },
     logger
   });
@@ -938,8 +1387,15 @@ app.whenReady().then(async () => {
     // smoke 显式走首次打开路径，覆盖面板/设置窗口的懒创建。
     taskSystem.showPanel(petWindowBounds());
     taskSystem.showSettings();
+    createRadialMenuWindow();
+    createKeyBubbleWindow();
   }
   createTray();
+  overlayTimer = setInterval(refreshOverlayOrder, 2000);
+  overlayTimer.unref();
+  powerMonitor.on("resume", refreshOverlayOrder);
+  screen.on("display-metrics-changed", refreshOverlayOrder);
+  screen.on("display-removed", () => { recallPetWindow(); hideRadialMenu(); refreshOverlayOrder(); });
   if (IS_SMOKE_TEST) {
     smokeTimeout = setTimeout(() => {
       console.error("TaskPet smoke test timed out before renderer initialization");
@@ -953,7 +1409,10 @@ app.whenReady().then(async () => {
 });
 
 app.on("activate", () => {
-  if (!petWindow) createPetWindow();
+  if (!petWindow) {
+    createPetWindow();
+    initializeKeyboardMappingMonitor();
+  }
   else petWindow.show();
 });
 
@@ -962,7 +1421,11 @@ app.on("window-all-closed", () => {
 });
 
 app.on("before-quit", () => {
+  clearInterval(overlayTimer);
+  musicService.dispose();
   clearTimeout(smokeTimeout);
+  keyboardMappingMonitor?.close();
+  keyboardMappingMonitor = null;
   saveWindowBounds();
   taskSystem?.close();
   taskSystem = null;

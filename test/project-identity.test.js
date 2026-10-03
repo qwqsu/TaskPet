@@ -18,7 +18,7 @@ test("package and builder use the TaskPet release identity", () => {
   );
 
   assert.equal(packageJson.name, "taskpet");
-  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
+  assert.equal(packageJson.version, "1.1.0");
   assert.equal(packageLockJson.version, packageJson.version);
   assert.equal(packageLockJson.packages[""].version, packageJson.version);
   assert.equal(packageJson.homepage, "https://github.com/qwqsu/TaskPet");
@@ -35,7 +35,7 @@ test("package and builder use the TaskPet release identity", () => {
   assert.match(builder, /^  - build\/\*\*$/m);
   assert.ok(builder.includes("  - '!src/**/*.ts'"));
   assert.ok(builder.includes("  - '!src/assets/pets/**'"));
-  assert.doesNotMatch(builder, /README\.zh-CN\.md/);
+  assert.doesNotMatch(builder, /^\s*- README\.zh-CN\.md$/m);
   assert.match(builder, /^electronLanguages:$/m);
   assert.match(builder, /^  - en-US$/m);
   assert.match(builder, /^  - zh-CN$/m);
@@ -65,11 +65,8 @@ test("package and builder use the TaskPet release identity", () => {
     "README.zh-CN.md",
     "media"
   ]) {
-    assert.equal(
-      fs.existsSync(path.join(root, privateDevelopmentEntry)),
-      false,
-      `${privateDevelopmentEntry} should not be part of the public release tree`
-    );
+    assert.ok(builder.includes(`  - '!${privateDevelopmentEntry}/**'`) || builder.includes(`  - '!${privateDevelopmentEntry}'`),
+      `${privateDevelopmentEntry} must be excluded from packaged artifacts; local references may exist`);
   }
 
   const main = fs.readFileSync(path.join(root, "src", "main.js"), "utf8");

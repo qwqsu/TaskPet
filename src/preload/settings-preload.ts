@@ -22,6 +22,8 @@ const SETTINGS_CHANNELS = Object.freeze({
   openStartupApps: "taskpet:settings:open-startup-apps",
   openGitHub: "taskpet:about:open-github",
   openLicenses: "taskpet:about:open-licenses",
+  keyboardCaptureMode: "taskpet:settings:keyboard-capture-mode",
+  navigate: "taskpet:settings:navigate",
   changed: "taskpet:settings:changed",
   rendererReady: "taskpet:settings:renderer-ready"
 });
@@ -39,7 +41,19 @@ function subscribeSettings(
   return () => ipcRenderer.removeListener(SETTINGS_CHANNELS.changed, listener);
 }
 
+function subscribeNavigation(callback: (sectionId: string) => void): () => void {
+  if (typeof callback !== "function") return () => {};
+  const listener = (_event: Electron.IpcRendererEvent, sectionId: unknown): void => {
+    if (sectionId === "interactionSection") callback(sectionId);
+  };
+  ipcRenderer.on(SETTINGS_CHANNELS.navigate, listener);
+  return () => ipcRenderer.removeListener(SETTINGS_CHANNELS.navigate, listener);
+}
+
 contextBridge.exposeInMainWorld("taskPetSettings", Object.freeze({
+  radialAppIcon: (id: string): Promise<string | null> => ipcRenderer.invoke("taskpet:settings:radial-app-icon", id),
+  chooseRadialApp: (): Promise<TaskApiResult<{path: string; name: string} | null>> => ipcRenderer.invoke("taskpet:settings:choose-radial-app"),
+  testRadialApp: (id: string): Promise<TaskApiResult<boolean>> => ipcRenderer.invoke("taskpet:settings:test-radial-app", id),
   get: (): Promise<TaskApiResult<AppSettingsSnapshot>> => (
     ipcRenderer.invoke(SETTINGS_CHANNELS.get)
   ),
@@ -78,8 +92,12 @@ contextBridge.exposeInMainWorld("taskPetSettings", Object.freeze({
   openLicenses: (): Promise<TaskApiResult<void>> => (
     ipcRenderer.invoke(SETTINGS_CHANNELS.openLicenses)
   ),
+  setKeyboardCaptureActive: (active: boolean): Promise<TaskApiResult<void>> => (
+    ipcRenderer.invoke(SETTINGS_CHANNELS.keyboardCaptureMode, { active: active === true })
+  ),
   rendererReady: (ok: boolean): void => {
     ipcRenderer.send(SETTINGS_CHANNELS.rendererReady, { ok: ok === true });
   },
-  onChanged: subscribeSettings
+  onChanged: subscribeSettings,
+  onNavigate: subscribeNavigation
 }));

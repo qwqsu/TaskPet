@@ -4,14 +4,14 @@
  */
 :root {
   color-scheme: light;
-  --ink: #24261f;
-  --muted: #72766a;
-  --paper: #f5f2ea;
-  --card: rgba(255, 255, 255, 0.86);
+  --ink: #141413;
+  --muted: #6c6a64;
+  --paper: #faf9f5;
+  --card: #efe9de;
   --line: rgba(48, 51, 42, 0.12);
-  --accent: #5f7452;
-  --accent-strong: #435b39;
-  --accent-soft: #dce6d4;
+  --accent: #cc785c;
+  --accent-strong: #a9583e;
+  --accent-soft: #f3dfd5;
   --danger: #a54f45;
   --shadow: 0 16px 44px rgba(48, 43, 30, 0.12);
 }
@@ -30,7 +30,7 @@ body {
 body {
   color: var(--ink);
   background:
-    radial-gradient(circle at 100% 0, rgba(211, 224, 199, 0.76), transparent 35%),
+    radial-gradient(circle at 100% 0, rgba(239, 233, 222, 0.76), transparent 35%),
     linear-gradient(155deg, #faf8f2 0%, var(--paper) 68%);
   font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
 }
@@ -78,7 +78,7 @@ p {
 
 h1 {
   margin-bottom: 5px;
-  font-family: Georgia, "Songti SC", serif;
+  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
   font-size: 31px;
   line-height: 1.08;
   letter-spacing: -0.03em;
@@ -110,12 +110,12 @@ h2 {
   border-radius: 12px;
   color: #fff;
   background: var(--accent-strong);
-  box-shadow: 0 7px 18px rgba(67, 91, 57, 0.22);
+  box-shadow: 0 7px 18px rgba(169, 88, 62, 0.22);
   font-weight: 700;
 }
 
 .primary-button:hover {
-  background: #354a2e;
+  background: #8d452f;
 }
 
 .tabs {
@@ -172,7 +172,7 @@ h2 {
 }
 
 .task-card.completed {
-  background: rgba(239, 242, 234, 0.82);
+  background: rgba(239, 233, 222, 0.82);
   box-shadow: none;
 }
 
@@ -225,10 +225,10 @@ h2 {
   min-width: 52px;
   min-height: 31px;
   padding: 0 10px;
-  border: 1px solid rgba(67, 91, 57, 0.28);
+  border: 1px solid rgba(169, 88, 62, 0.28);
   border-radius: 10px;
   color: var(--accent-strong);
-  background: #f4f8f1;
+  background: #f5f0e8;
   cursor: pointer;
   font-size: 12px;
   font-weight: 800;
@@ -241,7 +241,7 @@ h2 {
 
 .empty-state {
   padding: 56px 22px;
-  border: 1px dashed rgba(67, 91, 57, 0.28);
+  border: 1px dashed rgba(169, 88, 62, 0.28);
   border-radius: 18px;
   color: var(--muted);
   text-align: center;
@@ -252,7 +252,7 @@ h2 {
   display: block;
   margin-bottom: 8px;
   color: var(--ink);
-  font-family: Georgia, "Songti SC", serif;
+  font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif;
   font-size: 20px;
 }
 
@@ -315,8 +315,8 @@ h2 {
   padding: 18px;
   border-radius: 17px;
   color: #fff;
-  background: linear-gradient(135deg, #435b39, #708664);
-  box-shadow: 0 10px 25px rgba(67, 91, 57, 0.2);
+  background: linear-gradient(135deg, #a9583e, #cc785c);
+  box-shadow: 0 10px 25px rgba(169, 88, 62, 0.2);
 }
 
 .stats-total-card span,
@@ -432,7 +432,7 @@ h2 {
   padding: 14px;
   border: 1px solid rgba(48, 51, 42, 0.14);
   border-radius: 14px;
-  background: rgba(239, 242, 234, 0.58);
+  background: rgba(239, 233, 222, 0.58);
 }
 
 /* ---------- 当前程序选择器 ---------- */
@@ -529,7 +529,7 @@ h2 {
 
 .program-search input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(95, 116, 82, 0.1);
+  box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.1);
 }
 
 .running-program-list {
@@ -555,7 +555,7 @@ h2 {
 
 .program-option:hover {
   border-color: var(--accent);
-  background: #f7faf4;
+  background: #f5f0e8;
 }
 
 .program-option strong,
@@ -575,8 +575,8 @@ h2 {
 }
 
 .task-card.active {
-  border-color: rgba(67, 91, 57, 0.4);
-  box-shadow: 0 8px 24px rgba(67, 91, 57, 0.12);
+  border-color: rgba(169, 88, 62, 0.4);
+  box-shadow: 0 8px 24px rgba(169, 88, 62, 0.12);
 }
 
 /* ---------- 表单控件、按钮和响应式布局 ---------- */
@@ -607,7 +607,7 @@ h2 {
 .field textarea:focus,
 .field select:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(95, 116, 82, 0.12);
+  box-shadow: 0 0 0 3px rgba(204, 120, 92, 0.12);
 }
 
 .field select:disabled {
@@ -619,9 +619,9 @@ h2 {
   padding-right: 38px;
   appearance: none;
   background:
-    linear-gradient(45deg, transparent 50%, #72766a 50%) calc(100% - 18px) 18px / 5px 5px no-repeat,
-    linear-gradient(135deg, #72766a 50%, transparent 50%) calc(100% - 13px) 18px / 5px 5px no-repeat,
-    linear-gradient(135deg, #fff 0%, #f8faf6 100%);
+    linear-gradient(45deg, transparent 50%, #6c6a64 50%) calc(100% - 18px) 18px / 5px 5px no-repeat,
+    linear-gradient(135deg, #6c6a64 50%, transparent 50%) calc(100% - 13px) 18px / 5px 5px no-repeat,
+    linear-gradient(135deg, #fff 0%, #faf9f5 100%);
 }
 
 .sr-only {
@@ -670,7 +670,7 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 3px solid rgba(95, 116, 82, 0.28);
+  outline: 3px solid rgba(204, 120, 92, 0.28);
   outline-offset: 2px;
 }
 
@@ -683,4 +683,16 @@ textarea:focus-visible {
   .field-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Coral selection and warm dark summaries match the companion windows. */
+.task-card, .stats-entry, .tabs, .stats-periods { box-shadow: none; border-radius: 12px; }
+.task-card.active { border-color: #cc785c; box-shadow: inset 3px 0 #cc785c; }
+.tab.active, .stats-period.active { color: #8d452f; background: #f3dfd5; box-shadow: inset 0 -2px #cc785c; }
+.stats-total-card { background: #181715; box-shadow: none; border-radius: 16px; }
+.stats-total-card strong { color: #e6a48d; }
+.primary-button { box-shadow: none; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }

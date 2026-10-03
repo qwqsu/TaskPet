@@ -3,12 +3,17 @@ import assert from "node:assert/strict";
 import {
   DEFAULT_PET_MOUSE_BINDINGS,
   DroppedPetZipInputSchema,
+  KeyboardMappingSettingsSchema,
   PET_SIZE_PRESETS,
+  PET_OPACITY_STEP,
   UpdateAppSettingsInputSchema,
+  normalizeKeyboardMappingSettings,
+  normalizePetOpacity,
   normalizePetMouseBindings,
   normalizePetSize,
   petMouseActionForGesture
 } from "../src/shared/app-settings";
+import { defaultRadialSettings } from "../src/shared/radial-settings";
 
 test("pet size exposes one complete source of truth for all three presets", () => {
   assert.deepEqual(PET_SIZE_PRESETS, {
@@ -23,7 +28,6 @@ test("pet size exposes one complete source of truth for all three presets", () =
       statusSideMargin: 6,
       statusPaddingX: 2,
       statusPaddingY: 0,
-      idleFontSize: 8,
       statusMessageFontSize: 5,
       statusDetailFontSize: 7
     },
@@ -38,7 +42,6 @@ test("pet size exposes one complete source of truth for all three presets", () =
       statusSideMargin: 12,
       statusPaddingX: 5,
       statusPaddingY: 2,
-      idleFontSize: 13,
       statusMessageFontSize: 10,
       statusDetailFontSize: 13
     },
@@ -53,7 +56,6 @@ test("pet size exposes one complete source of truth for all three presets", () =
       statusSideMargin: 12,
       statusPaddingX: 6,
       statusPaddingY: 2,
-      idleFontSize: 14,
       statusMessageFontSize: 10,
       statusDetailFontSize: 14
     }
@@ -83,8 +85,82 @@ test("settings schema rejects internal monitor parameters and unknown controls",
   }).success, false);
 });
 
+test("opacity accepts every whole percent from 20 through 100", () => {
+  assert.equal(PET_OPACITY_STEP, 1);
+  for (let opacity = 20; opacity <= 100; opacity += 1) {
+    assert.equal(normalizePetOpacity(opacity), opacity);
+    assert.equal(UpdateAppSettingsInputSchema.safeParse({ petOpacity: opacity }).success, true);
+  }
+  assert.equal(normalizePetOpacity(83.4), 83);
+  assert.equal(normalizePetOpacity(83.5), 84);
+  for (const value of [undefined, null, 0, 19, 101, NaN, Infinity, "invalid"]) {
+    assert.equal(normalizePetOpacity(value), 100);
+  }
+  for (const value of [null, 0, 19, 101, 83.5, NaN, Infinity, "83"]) {
+    assert.equal(UpdateAppSettingsInputSchema.safeParse({ petOpacity: value }).success, false);
+  }
+});
+
+test("settings updates validate pet scale and the complete radial configuration", () => {
+  for (const petScale of [60, 100, 137, 180]) {
+    assert.equal(UpdateAppSettingsInputSchema.safeParse({ petScale }).success, true);
+  }
+  for (const petScale of [59, 181, 100.5, "100", null, NaN, Infinity]) {
+    assert.equal(UpdateAppSettingsInputSchema.safeParse({ petScale }).success, false);
+  }
+  const radialMenu = defaultRadialSettings();
+  assert.deepEqual(UpdateAppSettingsInputSchema.parse({ petScale: 137, radialMenu }), {
+    petScale: 137, radialMenu
+  });
+  for (const invalid of [
+    { enabled: true },
+    { ...radialMenu, opacity: 39 },
+    { ...radialMenu, scale: 141 },
+    { ...radialMenu, items: [radialMenu.items[0], radialMenu.items[0]] },
+    { ...radialMenu, execute: "arbitrary-command" }
+  ]) {
+    assert.equal(UpdateAppSettingsInputSchema.safeParse({ radialMenu: invalid }).success, false);
+  }
+});
+
+test("keyboard mappings keep only supported unique keys and eight-character labels", () => {
+  const normalized = normalizeKeyboardMappingSettings({
+    enabled: true,
+    mappings: [
+      { key: "KeyA", label: "写代码", enabled: true },
+      { key: "KeyA", label: "重复", enabled: true },
+      { key: "Mouse1", label: "鼠标", enabled: true },
+      { key: "F12", label: "abcdefgh", enabled: false }
+    ]
+  });
+  assert.deepEqual(normalized, {
+    enabled: true,
+    mappings: [
+      { key: "KeyA", label: "写代码", enabled: true },
+      { key: "F12", label: "abcdefgh", enabled: false }
+    ]
+  });
+  assert.equal(KeyboardMappingSettingsSchema.safeParse(normalized).success, true);
+  assert.equal(KeyboardMappingSettingsSchema.safeParse({
+    enabled: true,
+    mappings: [{ key: "KeyB", label: "123456789", enabled: true }]
+  }).success, false);
+  assert.equal(UpdateAppSettingsInputSchema.safeParse({
+    keyboardMapping: {
+      enabled: true,
+      mappings: [{ key: "Mouse1", label: "mouse", enabled: true }]
+    }
+  }).success, false);
+});
+
 test("pet mouse bindings use fixed actions and safe defaults", () => {
   assert.deepEqual(normalizePetMouseBindings(null), DEFAULT_PET_MOUSE_BINDINGS);
+  assert.equal(DEFAULT_PET_MOUSE_BINDINGS.rightClick, "open-radial-menu");
+  assert.deepEqual(normalizePetMouseBindings({
+    leftClick: "open-panel",
+    doubleClick: "toggle-monitoring",
+    rightClick: "open-settings"
+  }), DEFAULT_PET_MOUSE_BINDINGS, "the complete legacy default should migrate");
   const bindings = normalizePetMouseBindings({
     leftClick: "quick-add",
     doubleClick: "toggle-monitoring",

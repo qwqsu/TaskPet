@@ -4,18 +4,14 @@
 import type { MenuItemConstructorOptions } from "electron";
 
 export interface TrayMenuState {
-  monitorPaused: boolean;
-  autoStart: boolean;
-  autoStartSupported: boolean;
+  ignoreMouseEvents: boolean;
 }
 
 export interface TrayMenuActions {
-  openPanel(): void;
   quickAddTask(): void;
   togglePet(): void;
   recallPet(): void;
-  setMonitoringPaused(paused: boolean): void;
-  setAutoStart(enabled: boolean): void;
+  setIgnoreMouseEvents(enabled: boolean): void;
   openSettings(): void;
   quit(): void;
 }
@@ -26,27 +22,17 @@ export function createTrayMenuTemplate(
   petItems: MenuItemConstructorOptions[]
 ): MenuItemConstructorOptions[] {
   return [
-    { label: "打开任务面板", click: actions.openPanel },
-    { label: "快速添加任务", click: actions.quickAddTask },
-    { type: "separator" },
     { label: "显示 / 隐藏桌宠", click: actions.togglePet },
-    { label: "召回桌宠", click: actions.recallPet },
-    { type: "separator" },
-    {
-      label: state.monitorPaused ? "恢复任务监控" : "暂停任务监控",
-      click: () => actions.setMonitoringPaused(!state.monitorPaused)
-    },
-    { type: "separator" },
-    {
-      label: "开机自动启动",
-      type: "checkbox",
-      checked: state.autoStart,
-      enabled: state.autoStartSupported,
-      click: () => actions.setAutoStart(!state.autoStart)
-    },
+    { label: "快速添加任务", click: actions.quickAddTask },
     { label: "设置", click: actions.openSettings },
-    { type: "separator" },
     { label: "宠物", submenu: petItems },
+    { label: "召回桌宠", click: actions.recallPet },
+    {
+      label: "忽略鼠标事件",
+      type: "checkbox",
+      checked: state.ignoreMouseEvents,
+      click: () => actions.setIgnoreMouseEvents(!state.ignoreMouseEvents)
+    },
     { type: "separator" },
     { label: "退出 TaskPet", click: actions.quit }
   ];

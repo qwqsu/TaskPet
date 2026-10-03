@@ -1,0 +1,54 @@
+* { box-sizing: border-box; }
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: transparent;
+  font-family: "Microsoft YaHei", "Segoe UI", sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
+.bubbles {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 8px 12px;
+}
+
+.key-bubble {
+  max-width: 84px;
+  overflow: hidden;
+  padding: 9px 12px;
+  border: 1px solid #cc785c;
+  border-radius: 12px;
+  color: #faf9f5;
+  background: rgba(24, 23, 21, 0.96);
+  box-shadow: 0 4px 12px rgba(24, 23, 21, 0.2);
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  animation: bubble-life 1s ease both;
+}
+
+@keyframes bubble-life {
+  0% { opacity: 0; transform: translateY(12px) scale(0.82); }
+  14%, 72% { opacity: 1; transform: translateY(0) scale(1); }
+  100% { opacity: 0; transform: translateY(-18px) scale(0.94); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .key-bubble { animation: bubble-fade 1s linear both; }
+  @keyframes bubble-fade {
+    0%, 72% { opacity: 1; }
+    100% { opacity: 0; }
+  }
+}

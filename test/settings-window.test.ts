@@ -32,16 +32,21 @@ test("settings is an independent isolated window with the requested simple secti
     "utf8"
   );
   const main = fs.readFileSync(path.join(root, "src", "main.js"), "utf8");
-  for (const label of ["常规", "桌宠", "数据", "关于", "打开数据目录", "导出备份", "第三方许可证"]) {
+  for (const label of ["常规", "桌宠", "互动", "数据", "关于", "打开数据目录", "导出备份", "第三方许可证"]) {
     assert.ok(html.includes(label));
   }
-  assert.match(html, /大<\/strong><small>110% · 105 × 115/);
-  assert.match(html, /正常<\/strong><small>100% · 96 × 104/);
-  assert.match(html, /小<\/strong><small>50% · 48 × 52/);
+  assert.match(html, /id="petScaleRange"[^>]*min="60"[^>]*max="180"/);
+  assert.match(html, /id="radialSection"/);
   assert.match(html, /id="settingsStatus"[^>]*hidden/);
   assert.match(html, /id="leftClickAction"/);
   assert.match(html, /id="doubleClickAction"/);
   assert.match(html, /id="rightClickAction"/);
+  assert.match(html, /id="petOpacityRange"[^>]*min="20"[^>]*max="100"[^>]*step="1"/);
+  assert.match(html, /id="ignoreMouseEventsToggle"/);
+  assert.match(html, /忽略鼠标事件/);
+  assert.match(html, /id="keyboardMappingToggle"/);
+  assert.match(html, /id="addKeyboardMappingButton"/);
+  assert.match(html, /Esc 取消/);
   assert.match(html, /id="openCustomPetDialogButton"/);
   assert.match(html, /id="customPetDialog"/);
   assert.match(html, /id="petZipDropZone"/);
@@ -77,16 +82,23 @@ test("settings is an independent isolated window with the requested simple secti
   assert.match(preload, /taskpet:settings:import-dropped-pet-zip/);
   assert.match(preload, /taskpet:settings:import-pet-folder/);
   assert.match(preload, /taskpet:settings:open-petdex-create/);
+  assert.match(preload, /taskpet:settings:keyboard-capture-mode/);
   assert.match(renderer, /打开 \/ 关闭设置/);
   assert.match(renderer, /file\.arrayBuffer\(\)/);
   assert.match(renderer, /new Uint8Array/);
   assert.match(renderer, /MAX_PET_ZIP_BYTES = 50 \* 1024 \* 1024/);
+  assert.match(renderer, /normalizeCapturedCode/);
+  assert.match(renderer, /label\.maxLength = 8/);
+  assert.match(renderer, /settingsApi\.setKeyboardCaptureActive\(active\)/);
+  assert.doesNotMatch(renderer, /localStorage|fetch\(|XMLHttpRequest/);
   assert.match(renderer, /settingsApi\.importPetFolder\(\)/);
-  assert.doesNotMatch(renderer, /sourceLabel|内置/);
+  assert.doesNotMatch(renderer, /sourceLabel/);
   assert.match(main, /https:\/\/petdex\.dev\/zh\/create/);
   assert.match(taskSystem, /toggleSettings\(\): void/);
   assert.match(taskSystem, /settingsWindow\.close\(\)/);
   assert.match(main, /case "open-settings":\s*taskSystem\?\.toggleSettings\(\)/s);
+  assert.match(main, /petWindow\.setOpacity\(settings\.petOpacity \/ 100\)/);
+  assert.match(main, /petWindow\.setIgnoreMouseEvents\(false\)/);
   assert.doesNotMatch(renderer, /better-sqlite3|node:fs|child_process/);
   assert.doesNotMatch(preload, /better-sqlite3|node:fs|child_process/);
 });

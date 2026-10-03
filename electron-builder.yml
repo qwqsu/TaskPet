@@ -5,9 +5,14 @@ icon: src/assets/logo.png
 publish: null
 
 directories:
-  output: dist
+  output: dist/TaskPetV1.1
 
 files:
+  - '!AGENTS.md'
+  - '!DESIGN.md'
+  - '!CODE_GUIDE.md'
+  - '!README.zh-CN.md'
+  - '!media/**'
   - src/**
   - build/**
   - package.json
