@@ -12,6 +12,8 @@ export const SETTINGS_CHANNELS = Object.freeze({
   openStartupApps: "taskpet:settings:open-startup-apps",
   openGitHub: "taskpet:about:open-github",
   openLicenses: "taskpet:about:open-licenses",
+  keyboardCaptureMode: "taskpet:settings:keyboard-capture-mode",
+  navigate: "taskpet:settings:navigate",
   changed: "taskpet:settings:changed",
   rendererReady: "taskpet:settings:renderer-ready"
 });

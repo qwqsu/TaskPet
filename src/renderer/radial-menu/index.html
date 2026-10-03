@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TaskPet 快捷菜单</title>
+    <link rel="stylesheet" href="./radial-menu.css" />
+  </head>
+  <body>
+    <main id="menu" class="radial-menu" aria-label="TaskPet 快捷菜单">
+      <div id="items" role="toolbar" aria-label="快捷操作" aria-describedby="keyboardHelp"></div>
+      <section id="panel" class="panel" role="group" aria-label="调节面板" hidden></section>
+      <div id="feedback" class="feedback" role="status" aria-live="polite" aria-atomic="true" hidden></div>
+      <p id="keyboardHelp" class="sr-only">方向键或 Tab 移动，Enter 或空格执行，数字键选择当前页，Esc 返回或关闭。</p>
+    </main>
+    <script src="../../../build/renderer/radial-menu/radial-menu.js"></script>
+  </body>
+</html>

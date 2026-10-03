@@ -62,6 +62,9 @@ export interface TaskSystemLogger {
 }
 
 export interface TaskSystemSettingsAdapter {
+  chooseRadialApp?(): Promise<{path: string; name: string} | null>;
+  radialAppIcon?(id: string): Promise<string | null>;
+  testRadialApp?(id: string): Promise<boolean>;
   getSnapshot(): AppSettingsSnapshot;
   update(input: UpdateAppSettingsInput): AppSettingsSnapshot | Promise<AppSettingsSnapshot>;
   importPetZip(parentWindow: BrowserWindow | null): Promise<ImportPetResult>;
@@ -72,6 +75,7 @@ export interface TaskSystemSettingsAdapter {
   openStartupApps(): Promise<void>;
   openGitHub(): Promise<void>;
   openLicenses(): Promise<void>;
+  setKeyboardCaptureActive(active: boolean): void;
 }
 
 export interface TaskSystemOptions {
@@ -110,6 +114,7 @@ export class TaskSystem {
   private settingsWindow: BrowserWindow | null = null;
   private pendingShow = false;
   private pendingSettingsShow = false;
+  private pendingSettingsSection: "interactionSection" | null = null;
   private disposeTaskIpc: (() => void) | null = null;
   private disposeProcessIpc: (() => void) | null = null;
   private disposeSettingsIpc: (() => void) | null = null;
@@ -179,6 +184,17 @@ export class TaskSystem {
   }
 
   initialize(): void {
+    ipcMain.handle("taskpet:settings:radial-app-icon", (event, id: unknown) => this.isSettingsSender(event) && typeof id === "string" ? this.options.settings.radialAppIcon?.(id) ?? null : null);
+    ipcMain.handle("taskpet:settings:choose-radial-app", async event => {
+      if (!this.isSettingsSender(event)) return {ok: false, error: {code: "INVALID_INPUT", message: "无效窗口"}};
+      try { return {ok: true, data: await this.options.settings.chooseRadialApp?.() ?? null}; }
+      catch (error) { return {ok: false, error: {code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "选择失败"}}; }
+    });
+    ipcMain.handle("taskpet:settings:test-radial-app", async (event, id: unknown) => {
+      if (!this.isSettingsSender(event) || typeof id !== "string" || !/^app-[a-zA-Z0-9-]{1,76}$/.test(id)) return {ok: false, error: {code: "INVALID_INPUT", message: "无效应用入口"}};
+      try { return {ok: true, data: await this.options.settings.testRadialApp?.(id) ?? false}; }
+      catch (error) { return {ok: false, error: {code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "启动失败"}}; }
+    });
     // 初始化顺序：恢复旧 Session → 注册 IPC → 建立监控目标 → 安排跨日刷新。
     // 任务面板首次打开时再创建，避免空闲常驻一个隐藏 Renderer。
     const recovered = this.runtime.recoverStaleSessions();
@@ -247,7 +263,10 @@ export class TaskSystem {
       exportBackup: () => this.dataService.exportBackup(),
       openStartupApps: () => this.options.settings.openStartupApps(),
       openGitHub: () => this.options.settings.openGitHub(),
-      openLicenses: () => this.options.settings.openLicenses()
+      openLicenses: () => this.options.settings.openLicenses(),
+      setKeyboardCaptureActive: (active) => {
+        this.options.settings.setKeyboardCaptureActive(active);
+      }
     });
     ipcMain.handle(TASK_CHANNELS.rendererReady, this.handleRendererReady);
     ipcMain.on(SETTINGS_CHANNELS.rendererReady, this.handleSettingsRendererReady);
@@ -274,7 +293,8 @@ export class TaskSystem {
     this.showPanelCommand("open-add-task", anchorBounds);
   }
 
-  showSettings(): void {
+  showSettings(section?: "interactionSection"): void {
+    if (section) this.pendingSettingsSection = section;
     if (!this.settingsWindow || this.settingsWindow.isDestroyed()) {
       this.pendingSettingsShow = true;
       this.createSettingsWindow();
@@ -286,6 +306,7 @@ export class TaskSystem {
     }
     this.settingsWindow.show();
     this.settingsWindow.focus();
+    this.flushSettingsNavigation();
   }
 
   toggleSettings(): void {
@@ -343,6 +364,9 @@ export class TaskSystem {
   }
 
   close(): void {
+    ipcMain.removeHandler("taskpet:settings:radial-app-icon");
+    ipcMain.removeHandler("taskpet:settings:choose-radial-app");
+    ipcMain.removeHandler("taskpet:settings:test-radial-app");
     // 先停止产生新事件的 timer/monitor，再销毁 IPC、窗口和数据库连接。
     this.closing = true;
     if (this.midnightTimer) clearTimeout(this.midnightTimer);
@@ -376,6 +400,7 @@ export class TaskSystem {
     }
     this.settingsWindow = null;
     this.pendingSettingsShow = false;
+    this.pendingSettingsSection = null;
 
     if (this.database.open) this.database.close();
   }
@@ -529,14 +554,17 @@ export class TaskSystem {
       this.pendingSettingsShow = false;
       settingsWindow.show();
       settingsWindow.focus();
+      this.flushSettingsNavigation();
     });
     settingsWindow.webContents.on("did-fail-load", (_event, code, description) => {
       console.error(`TaskPet settings window failed to load (${code}): ${description}`);
     });
     settingsWindow.on("closed", () => {
+      this.options.settings.setKeyboardCaptureActive(false);
       if (this.settingsWindow === settingsWindow) {
         this.settingsWindow = null;
         this.pendingSettingsShow = false;
+        this.pendingSettingsSection = null;
       }
     });
   }
@@ -554,6 +582,18 @@ export class TaskSystem {
     const command = this.pendingPanelCommand;
     this.pendingPanelCommand = null;
     this.panelWindow.webContents.send(TASK_CHANNELS.panelCommand, command);
+  }
+
+  private flushSettingsNavigation(): void {
+    if (
+      !this.pendingSettingsSection
+      || !this.settingsWindow
+      || this.settingsWindow.isDestroyed()
+      || this.settingsWindow.webContents.isLoading()
+    ) return;
+    const section = this.pendingSettingsSection;
+    this.pendingSettingsSection = null;
+    this.settingsWindow.webContents.send(SETTINGS_CHANNELS.navigate, section);
   }
 
   private positionPanel(anchorBounds?: Rectangle | null): void {

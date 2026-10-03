@@ -16,7 +16,6 @@
   --status-side-margin: 0px;
   --status-padding-x: 0px;
   --status-padding-y: 0px;
-  --idle-font-size: 0px;
   --status-message-font-size: 0px;
   --status-detail-font-size: 0px;
   --fallback-scale-x: 0;
@@ -96,12 +95,12 @@ body {
   width: calc(100% - var(--status-side-margin) - var(--status-side-margin));
   margin: 0;
   padding: var(--status-padding-y) var(--status-padding-x);
-  border: 1px solid rgba(255, 255, 255, 0.7);
+  border: 1px solid rgba(204, 120, 92, 0.65);
   border-radius: 12px;
-  color: #263241;
+  color: #faf9f5;
   text-align: center;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.13);
+  background: rgba(24, 23, 21, 0.94);
+  box-shadow: 0 4px 12px rgba(24, 23, 21, 0.16);
   backdrop-filter: blur(8px);
   opacity: 0;
   transform: translate(-50%, 4px);
@@ -118,22 +117,12 @@ body {
   display: none;
 }
 
-/* 无任务时仍显示颜文字，但不绘制白色圆角状态框。 */
-.pet-status.idle-text {
-  width: auto;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  backdrop-filter: none;
-}
-
 .pet-status-message {
   /* 任务名保持一行并省略；具体字号由当前尺寸 preset 统一提供。 */
   display: block;
   width: 100%;
   overflow: hidden;
-  color: #263241;
+  color: #faf9f5;
   font-size: var(--status-message-font-size);
   font-weight: 700;
   line-height: 1.15;
@@ -141,18 +130,11 @@ body {
   white-space: nowrap;
 }
 
-.pet-status.idle-text .pet-status-message {
-  overflow: visible;
-  color: #263241;
-  font-size: var(--idle-font-size);
-  text-shadow: 0 1px 4px rgba(255, 255, 255, 0.95);
-}
-
 .pet-status-detail {
   /* 独立计时行使用等宽数字，秒数跳动时文字不会左右抖动。 */
   display: none;
   margin-top: 2px;
-  color: #11845b;
+  color: #e6a48d;
   font-size: var(--status-detail-font-size);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
@@ -173,11 +155,12 @@ body {
   height: var(--pet-height);
   transform-origin: 50% 92%;
   filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.2));
-  cursor: grab;
+  cursor: default;
+  pointer-events: auto;
   touch-action: none;
 }
 
-.pet:active {
+.pet.dragging {
   cursor: grabbing;
 }
 
@@ -301,4 +284,8 @@ body {
 @keyframes work-bob {
   0%, 100% { transform: translateX(-2px) rotate(-1.5deg); }
   50% { transform: translateX(2px) rotate(1.5deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pet-status { transition: none; }
 }

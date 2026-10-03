@@ -4,6 +4,7 @@ import type { IpcMain } from "electron";
 import { registerSettingsIpc } from "../src/main/ipc/register-settings-ipc";
 import { SETTINGS_CHANNELS } from "../src/main/ipc/settings-channels";
 import type { AppSettingsSnapshot } from "../src/shared/app-settings";
+import { defaultRadialSettings } from "../src/shared/radial-settings";
 
 type Handler = (event: { sender: object }, input?: unknown) => Promise<unknown>;
 
@@ -20,6 +21,8 @@ class FakeIpcMain {
 }
 
 const snapshot: AppSettingsSnapshot = {
+  petScale: 100,
+  radialMenu: defaultRadialSettings(),
   autoStart: {
     supported: true,
     registered: false,
@@ -27,12 +30,16 @@ const snapshot: AppSettingsSnapshot = {
     blockedByWindows: false
   },
   petSize: "normal",
+  petOpacity: 100,
+  ignoreMouseEvents: false,
   alwaysOnTop: true,
   mouseBindings: {
     leftClick: "open-panel",
     doubleClick: "toggle-monitoring",
-    rightClick: "open-settings"
+    rightClick: "open-radial-menu"
   },
+  keyboardMapping: { enabled: true, mappings: [] },
+  keyboardInputSupported: true,
   activePetKey: "pets:yinienie",
   pets: [{
     key: "pets:yinienie",
@@ -57,6 +64,7 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
   let pickedZipImports = 0;
   let droppedZipImports = 0;
   let folderImports = 0;
+  let keyboardCaptureActive = false;
   const dispose = registerSettingsIpc({
     ipcMain: ipc as unknown as IpcMain,
     isTrustedSender: (event) => event.sender === trustedSender,
@@ -64,8 +72,11 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
     updateSettings: (input) => ({
       ...snapshot,
       petSize: input.petSize ?? snapshot.petSize,
+      petOpacity: input.petOpacity ?? snapshot.petOpacity,
+      ignoreMouseEvents: input.ignoreMouseEvents ?? snapshot.ignoreMouseEvents,
       alwaysOnTop: input.alwaysOnTop ?? snapshot.alwaysOnTop,
       mouseBindings: input.mouseBindings ?? snapshot.mouseBindings,
+      keyboardMapping: input.keyboardMapping ?? snapshot.keyboardMapping,
       activePetKey: input.activePetKey ?? snapshot.activePetKey,
       autoStart: input.autoStart === undefined
         ? snapshot.autoStart
@@ -101,7 +112,8 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
     exportBackup: async () => ({ canceled: true, filePath: null }),
     openStartupApps: async () => { startupSettingsOpens += 1; },
     openGitHub: async () => { githubOpens += 1; },
-    openLicenses: async () => undefined
+    openLicenses: async () => undefined,
+    setKeyboardCaptureActive: (active) => { keyboardCaptureActive = active; }
   });
 
   const get = ipc.handlers.get(SETTINGS_CHANNELS.get)!;
@@ -113,6 +125,7 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
   const openPetDexCreate = ipc.handlers.get(SETTINGS_CHANNELS.openPetDexCreate)!;
   const openStartupApps = ipc.handlers.get(SETTINGS_CHANNELS.openStartupApps)!;
   const openGitHub = ipc.handlers.get(SETTINGS_CHANNELS.openGitHub)!;
+  const keyboardCapture = ipc.handlers.get(SETTINGS_CHANNELS.keyboardCaptureMode)!;
 
   assert.deepEqual(await get({ sender: trustedSender }), { ok: true, data: snapshot });
   assert.deepEqual(await update({ sender: trustedSender }, { petSize: "small" }), {
@@ -191,6 +204,18 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
     data: undefined
   });
   assert.equal(startupSettingsOpens, 1);
+
+  assert.deepEqual(await keyboardCapture({ sender: trustedSender }, { active: true }), {
+    ok: true,
+    data: undefined
+  });
+  assert.equal(keyboardCaptureActive, true);
+  const invalidCapture = await keyboardCapture(
+    { sender: trustedSender },
+    { active: false, key: "KeyA" }
+  ) as { ok: boolean };
+  assert.equal(invalidCapture.ok, false);
+  assert.equal(keyboardCaptureActive, true);
 
   dispose();
   assert.equal(ipc.handlers.size, 0);

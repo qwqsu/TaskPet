@@ -1,8 +1,10 @@
 /**
  * TaskPet 应用设置契约。
- * 只暴露用户可理解的开关和三档桌宠尺寸；内部轮询/计时间隔不属于设置。
+ * 只暴露用户可理解的开关、三档桌宠尺寸与本地键盘映射；
+ * 内部轮询/计时间隔和完整按键历史都不属于设置。
  */
 import { z } from "zod";
+import { RadialSettingsSchema, type RadialMenuSettings } from "./radial-settings";
 
 export const PET_SIZE_PRESETS = Object.freeze({
   small: Object.freeze({
@@ -16,7 +18,6 @@ export const PET_SIZE_PRESETS = Object.freeze({
     statusSideMargin: 6,
     statusPaddingX: 2,
     statusPaddingY: 0,
-    idleFontSize: 8,
     statusMessageFontSize: 5,
     statusDetailFontSize: 7
   }),
@@ -31,7 +32,6 @@ export const PET_SIZE_PRESETS = Object.freeze({
     statusSideMargin: 12,
     statusPaddingX: 5,
     statusPaddingY: 2,
-    idleFontSize: 13,
     statusMessageFontSize: 10,
     statusDetailFontSize: 13
   }),
@@ -46,7 +46,6 @@ export const PET_SIZE_PRESETS = Object.freeze({
     statusSideMargin: 12,
     statusPaddingX: 6,
     statusPaddingY: 2,
-    idleFontSize: 14,
     statusMessageFontSize: 10,
     statusDetailFontSize: 14
   })
@@ -66,6 +65,7 @@ export const PET_MOUSE_ACTIONS = Object.freeze([
   "open-panel",
   "quick-add",
   "open-settings",
+  "open-radial-menu",
   "toggle-monitoring",
   "recall-pet",
   "quit",
@@ -84,7 +84,66 @@ export interface PetMouseBindings {
 export const DEFAULT_PET_MOUSE_BINDINGS: Readonly<PetMouseBindings> = Object.freeze({
   leftClick: "open-panel",
   doubleClick: "toggle-monitoring",
-  rightClick: "open-settings"
+  rightClick: "open-radial-menu"
+});
+
+export const MIN_PET_OPACITY = 20;
+export const MAX_PET_OPACITY = 100;
+export const PET_OPACITY_STEP = 1;
+export const DEFAULT_PET_OPACITY = 100;
+export const MAX_KEYBOARD_MAPPINGS = 32;
+
+export const SUPPORTED_KEYBOARD_CODES = Object.freeze([
+  ...Array.from({ length: 26 }, (_, index) => `Key${String.fromCharCode(65 + index)}`),
+  ...Array.from({ length: 10 }, (_, index) => `Digit${index}`),
+  ...Array.from({ length: 12 }, (_, index) => `F${index + 1}`),
+  "Space",
+  "Enter",
+  "Tab",
+  "Backspace",
+  "Delete",
+  "Insert",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Shift",
+  "Control",
+  "Alt",
+  "CapsLock",
+  "Backquote",
+  "Minus",
+  "Equal",
+  "BracketLeft",
+  "BracketRight",
+  "Backslash",
+  "Semicolon",
+  "Quote",
+  "Comma",
+  "Period",
+  "Slash"
+] as const);
+
+export type KeyboardCode = string;
+
+export interface KeyboardMappingEntry {
+  key: KeyboardCode;
+  label: string;
+  enabled: boolean;
+}
+
+export interface KeyboardMappingSettings {
+  enabled: boolean;
+  mappings: ReadonlyArray<KeyboardMappingEntry>;
+}
+
+export const DEFAULT_KEYBOARD_MAPPING_SETTINGS: Readonly<KeyboardMappingSettings> = Object.freeze({
+  enabled: true,
+  mappings: Object.freeze([])
 });
 
 export interface PetSettingsOption {
@@ -101,10 +160,16 @@ export interface PetSettingsOption {
 }
 
 export interface AppSettingsSnapshot {
+  petScale: number;
+  radialMenu: RadialMenuSettings;
   autoStart: AutoStartStatus;
   petSize: PetSize;
+  petOpacity: number;
+  ignoreMouseEvents: boolean;
   alwaysOnTop: boolean;
   mouseBindings: PetMouseBindings;
+  keyboardMapping: KeyboardMappingSettings;
+  keyboardInputSupported: boolean;
   activePetKey: string | null;
   pets: PetSettingsOption[];
   dataDirectory: string;
@@ -151,17 +216,67 @@ export const PetMouseBindingsSchema = z.object({
   rightClick: z.enum(PET_MOUSE_ACTIONS)
 }).strict();
 
+const supportedKeyboardCodeSet = new Set<string>(SUPPORTED_KEYBOARD_CODES);
+const KeyboardCodeSchema = z.string().refine(
+  (value) => supportedKeyboardCodeSet.has(value),
+  "不支持该按键"
+);
+
+export const KeyboardMappingEntrySchema = z.object({
+  key: KeyboardCodeSchema,
+  label: z.string()
+    .trim()
+    .min(1, "显示文字不能为空")
+    .max(16, "显示文字过长")
+    .refine((value) => [...value].length <= 8, "显示文字最多 8 个字符"),
+  enabled: z.boolean()
+}).strict();
+
+export const KeyboardMappingSettingsSchema = z.object({
+  enabled: z.boolean(),
+  mappings: z.array(KeyboardMappingEntrySchema)
+    .max(MAX_KEYBOARD_MAPPINGS, `最多添加 ${MAX_KEYBOARD_MAPPINGS} 个按键`)
+    .superRefine((mappings, context) => {
+      const keys = new Set<string>();
+      for (const [index, mapping] of mappings.entries()) {
+        if (keys.has(mapping.key)) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            message: "不能重复添加同一个按键",
+            path: [index, "key"]
+          });
+        }
+        keys.add(mapping.key);
+      }
+    })
+}).strict();
+
 export const UpdateAppSettingsInputSchema = z.object({
+  petScale: z.number().int().min(60).max(180).optional(),
+  radialMenu: RadialSettingsSchema.optional(),
   autoStart: z.boolean().optional(),
   petSize: z.enum(["large", "normal", "small"]).optional(),
+  petOpacity: z.number()
+    .int()
+    .min(MIN_PET_OPACITY)
+    .max(MAX_PET_OPACITY)
+    .optional(),
+  ignoreMouseEvents: z.boolean().optional(),
   alwaysOnTop: z.boolean().optional(),
   mouseBindings: PetMouseBindingsSchema.optional(),
+  keyboardMapping: KeyboardMappingSettingsSchema.optional(),
   activePetKey: z.string().trim().min(1).max(240).optional()
 }).strict().refine((input) => Object.keys(input).length > 0, {
   message: "至少需要修改一个设置"
 });
 
 export type UpdateAppSettingsInput = z.input<typeof UpdateAppSettingsInputSchema>;
+
+export const KeyboardCaptureModeInputSchema = z.object({
+  active: z.boolean()
+}).strict();
+
+export type KeyboardCaptureModeInput = z.input<typeof KeyboardCaptureModeInputSchema>;
 
 function closestPetSize(
   value: unknown
@@ -192,7 +307,48 @@ export function normalizePetSize(value: unknown, legacyZoom?: unknown): PetSize 
 
 export function normalizePetMouseBindings(value: unknown): PetMouseBindings {
   const parsed = PetMouseBindingsSchema.safeParse(value);
-  return parsed.success ? parsed.data : { ...DEFAULT_PET_MOUSE_BINDINGS };
+  if (!parsed.success) return { ...DEFAULT_PET_MOUSE_BINDINGS };
+  // 1.0.1 之前的默认右键动作是“打开设置”；只迁移完整的旧默认组合，
+  // 用户自定义过任意一项时仍原样保留。
+  if (
+    parsed.data.leftClick === "open-panel"
+    && parsed.data.doubleClick === "toggle-monitoring"
+    && parsed.data.rightClick === "open-settings"
+  ) {
+    return { ...DEFAULT_PET_MOUSE_BINDINGS };
+  }
+  return parsed.data;
+}
+
+export function normalizePetOpacity(value: unknown): number {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric) || numeric < MIN_PET_OPACITY || numeric > MAX_PET_OPACITY) {
+    return DEFAULT_PET_OPACITY;
+  }
+  return Math.round(numeric / PET_OPACITY_STEP) * PET_OPACITY_STEP;
+}
+
+export function normalizeKeyboardMappingSettings(value: unknown): KeyboardMappingSettings {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { enabled: DEFAULT_KEYBOARD_MAPPING_SETTINGS.enabled, mappings: [] };
+  }
+
+  const raw = value as { enabled?: unknown; mappings?: unknown };
+  const mappings: KeyboardMappingEntry[] = [];
+  const keys = new Set<string>();
+  if (Array.isArray(raw.mappings)) {
+    for (const candidate of raw.mappings) {
+      const parsed = KeyboardMappingEntrySchema.safeParse(candidate);
+      if (!parsed.success || keys.has(parsed.data.key)) continue;
+      keys.add(parsed.data.key);
+      mappings.push(parsed.data);
+      if (mappings.length >= MAX_KEYBOARD_MAPPINGS) break;
+    }
+  }
+  return {
+    enabled: raw.enabled !== false,
+    mappings
+  };
 }
 
 export function petMouseActionForGesture(

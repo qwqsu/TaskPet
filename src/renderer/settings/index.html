@@ -26,6 +26,12 @@
           <button class="nav-item" type="button" data-target="petSection">
             <span aria-hidden="true">🐾</span>桌宠
           </button>
+          <button class="nav-item" type="button" data-target="interactionSection">
+            <span aria-hidden="true">⌨</span>互动
+          </button>
+          <button class="nav-item" type="button" data-target="radialSection">
+            <span aria-hidden="true">◉</span>轮盘菜单
+          </button>
           <button class="nav-item" type="button" data-target="dataSection">
             <span aria-hidden="true">◉</span>数据
           </button>
@@ -81,32 +87,16 @@
               </button>
             </div>
 
-            <fieldset class="size-fieldset">
-              <legend>桌宠大小</legend>
-              <div class="size-presets">
-                <button class="size-option" type="button" data-pet-size="large" aria-pressed="false">
-                  <span class="pet-preview preview-large" aria-hidden="true">🐾</span>
-                  <span><strong>大</strong><small>110% · 105 × 115</small></span>
-                  <i aria-hidden="true"></i>
-                </button>
-                <button class="size-option" type="button" data-pet-size="normal" aria-pressed="false">
-                  <span class="pet-preview preview-normal" aria-hidden="true">🐾</span>
-                  <span><strong>正常</strong><small>100% · 96 × 104</small></span>
-                  <i aria-hidden="true"></i>
-                </button>
-                <button class="size-option" type="button" data-pet-size="small" aria-pressed="false">
-                  <span class="pet-preview preview-small" aria-hidden="true">🐾</span>
-                  <span><strong>小</strong><small>50% · 48 × 52</small></span>
-                  <i aria-hidden="true"></i>
-                </button>
-              </div>
-            </fieldset>
+            <label class="range-field" for="petScaleRange">桌宠大小
+              <input id="petScaleRange" class="opacity-range" type="range" min="60" max="180" step="5" value="100" />
+              <span class="range-endpoints" aria-hidden="true"><span>小巧</span><span>放大</span></span>
+            </label>
 
             <div class="setting-divider"></div>
             <div class="setting-row">
               <div class="row-copy">
                 <strong>始终置顶</strong>
-                <small>桌宠窗口始终显示在其他窗口上方</small>
+                <small>在普通窗口、窗口化及无边框游戏上方显示；独占全屏和系统安全界面可能遮挡桌宠。</small>
               </div>
               <label class="switch" aria-label="桌宠始终置顶">
                 <input id="alwaysOnTopToggle" type="checkbox" />
@@ -184,6 +174,80 @@
               <button id="cancelCustomPetButton" type="button">关闭</button>
             </footer>
           </div>
+        </dialog>
+
+        <section id="interactionSection" class="settings-section" data-section="interactionSection">
+          <h1>互动</h1>
+          <div class="settings-card interaction-card">
+            <div class="setting-row opacity-row">
+              <div class="row-copy">
+                <strong>桌宠透明度</strong>
+                <small>只调整桌宠主窗口，任务面板和设置页不受影响。</small>
+              </div>
+            </div>
+            <input id="petOpacityRange" class="opacity-range" type="range" min="20" max="100" step="1" value="100" aria-label="桌宠透明度" />
+
+            <div class="setting-divider"></div>
+            <div class="setting-row">
+              <div class="row-copy">
+                <strong>忽略鼠标事件</strong>
+                <small>开启后忽略普通鼠标左键单击；鼠标拖动、右键和双击仍保持原有功能。</small>
+              </div>
+              <label class="switch" aria-label="忽略鼠标事件">
+                <input id="ignoreMouseEventsToggle" type="checkbox" />
+                <span></span>
+              </label>
+            </div>
+
+            <div class="setting-divider"></div>
+            <div class="setting-row keyboard-heading">
+              <div class="row-copy">
+                <strong>键盘映射气泡</strong>
+                <small id="keyboardMappingHint">仅监听你添加的按键，按下时在桌宠上方短暂显示标签；不保存按键历史。</small>
+              </div>
+              <label class="switch" aria-label="启用键盘映射气泡">
+                <input id="keyboardMappingToggle" type="checkbox" />
+                <span></span>
+              </label>
+            </div>
+            <div class="keyboard-toolbar">
+              <button id="addKeyboardMappingButton" class="primary-button" type="button">＋ 添加按键</button>
+              <button id="clearKeyboardMappingsButton" type="button">清空</button>
+              <span id="keyboardCaptureHint" hidden>请按下要添加的键；Esc 取消</span>
+            </div>
+            <div id="keyboardMappingList" class="keyboard-mapping-list" aria-live="polite"></div>
+            <p id="emptyKeyboardMappings" class="empty-mappings">还没有映射。添加后，按键只会触发本地视觉气泡。</p>
+          </div>
+        </section>
+
+        <section id="radialSection" class="settings-section" data-section="radialSection">
+          <h1>轮盘菜单</h1>
+          <div class="settings-card radial-card">
+            <div class="setting-row"><div class="row-copy"><strong>启用轮盘菜单</strong><small>通过鼠标按键绑定打开；所有更改即时保存。</small></div><label class="switch" aria-label="启用轮盘菜单"><input id="radialEnabledToggle" type="checkbox" /><span></span></label></div>
+            <div class="setting-divider"></div>
+            <div class="setting-row"><div class="row-copy"><strong>打开与关闭动画</strong><small>同时遵循系统的减少动画偏好。</small></div><label class="switch" aria-label="启用轮盘动画"><input id="radialAnimationsToggle" type="checkbox" /><span></span></label></div>
+            <div class="radial-ranges">
+              <label class="range-field" for="radialOpacityRange">轮盘透明度<input id="radialOpacityRange" class="opacity-range" type="range" min="40" max="100" step="1" value="92" /><span class="range-endpoints" aria-hidden="true"><span>通透</span><span>清晰</span></span></label>
+              <label class="range-field" for="radialScaleRange">轮盘大小<input id="radialScaleRange" class="opacity-range" type="range" min="50" max="130" step="1" value="90" /><span class="range-endpoints" aria-hidden="true"><span>紧凑</span><span>宽松</span></span></label>
+            </div>
+            <div class="setting-divider"></div>
+            <h2>菜单项</h2>
+            <p class="radial-help">拖动项目或使用上移、下移按钮排序。取消启用即可隐藏，内置项不可删除。</p>
+            <div class="radial-toolbar"><button id="addRadialAppButton" type="button" class="primary-button">＋ 添加应用</button><button id="restoreRadialOrderButton" type="button">恢复默认顺序</button><button id="restoreRadialDefaultsButton" type="button">恢复轮盘默认设置</button></div>
+            <p id="radialFeedback" class="radial-feedback" role="status" aria-live="polite" hidden></p>
+            <ol id="radialItemList" class="radial-item-list" aria-label="轮盘菜单项目"></ol>
+            <p class="radial-help">支持程序（.exe）和快捷方式（.lnk）；暂不提供 URI 或启动参数。应用图标不可用时显示通用图标。</p>
+          </div>
+        </section>
+        <dialog id="radialAppDialog" class="custom-pet-dialog radial-app-dialog" aria-labelledby="radialAppDialogTitle">
+          <form id="radialAppForm" class="pet-package-dialog">
+            <h2 id="radialAppDialogTitle">添加应用</h2>
+            <label class="select-field">显示名称<input id="radialAppName" required maxlength="40" autocomplete="off" /></label>
+            <label class="select-field">启动目标<input id="radialAppPath" readonly required /></label>
+            <button id="chooseRadialAppButton" type="button">重新选择路径</button>
+            <p id="radialAppError" class="radial-feedback error" role="alert" hidden></p>
+            <div class="dialog-actions"><button id="cancelRadialAppButton" type="button">取消</button><button id="saveRadialAppButton" class="primary" type="submit">保存应用</button></div>
+          </form>
         </dialog>
 
         <section id="dataSection" class="settings-section" data-section="dataSection">

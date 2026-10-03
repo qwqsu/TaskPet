@@ -13,13 +13,8 @@ const petStatusDetail = document.getElementById("petStatusDetail");
 // ---------- 动画格式与页面内存状态 ----------
 
 const DEFAULT_FRAME = Object.freeze({ width: 192, height: 208, columns: 8, rows: 9 });
-const DOUBLE_CLICK_DELAY_MS = 350;
-const IDLE_MESSAGES = Object.freeze([
-  "ヾ(•ω•`)o",
-  "(❁´◡`❁)",
-  "(‾◡◝)"
-]);
-const IDLE_MESSAGE_INTERVAL_MS = 5_000;
+const DEFAULT_DOUBLE_CLICK_DELAY_MS = 500;
+const DRAG_THRESHOLD_PX = 5;
 const ALLOWED_STATES = new Set([
   "idle",
   "working",
@@ -49,9 +44,8 @@ let visualSize = { width: 1, height: 1 };
 let animationStarted = false;
 let pendingSingleClickTimer = null;
 let suppressNextClick = false;
-let idleMessageIndex = 0;
-let idleMessageTimer = null;
-let idleRotationEnabled = false;
+let doubleClickDelayMs = DEFAULT_DOUBLE_CLICK_DELAY_MS;
+let doubleClickCandidate = false;
 
 // ---------- 调试边框、输入归一化与三档尺寸 ----------
 
@@ -104,7 +98,6 @@ function normalizePetSizePreset(nextPreset = {}) {
     ),
     statusPaddingX: requiredNonNegativeNumber(nextPreset.statusPaddingX, "preset.statusPaddingX"),
     statusPaddingY: requiredNonNegativeNumber(nextPreset.statusPaddingY, "preset.statusPaddingY"),
-    idleFontSize: requiredPositiveNumber(nextPreset.idleFontSize, "preset.idleFontSize"),
     statusMessageFontSize: requiredPositiveNumber(
       nextPreset.statusMessageFontSize,
       "preset.statusMessageFontSize"
@@ -159,7 +152,6 @@ function applyPetSizePreset(nextPreset) {
   );
   document.documentElement.style.setProperty("--status-padding-x", `${preset.statusPaddingX}px`);
   document.documentElement.style.setProperty("--status-padding-y", `${preset.statusPaddingY}px`);
-  document.documentElement.style.setProperty("--idle-font-size", `${preset.idleFontSize}px`);
   document.documentElement.style.setProperty(
     "--status-message-font-size",
     `${preset.statusMessageFontSize}px`
@@ -251,38 +243,16 @@ function setPet(petPayload) {
   drawFrame();
 }
 
-function renderPetStatus(message, detail, isIdleText = false) {
+function renderPetStatus(message, detail) {
   const visible = message.length > 0 || detail.length > 0;
-  petStatus.setAttribute("aria-live", isIdleText ? "off" : "polite");
   petStatusMessage.textContent = message;
   petStatusDetail.textContent = detail;
   petStatus.classList.toggle("has-detail", detail.length > 0);
-  petStatus.classList.toggle("idle-text", isIdleText);
   petStatus.classList.toggle("show", visible);
   petStatus.hidden = !visible;
 }
 
-function stopIdleMessageRotation() {
-  if (idleMessageTimer !== null) clearTimeout(idleMessageTimer);
-  idleMessageTimer = null;
-}
-
-function showNextIdleMessage() {
-  idleMessageTimer = null;
-  if (!idleRotationEnabled || currentState !== "idle" || document.hidden) return;
-  const message = IDLE_MESSAGES[idleMessageIndex % IDLE_MESSAGES.length];
-  idleMessageIndex = (idleMessageIndex + 1) % IDLE_MESSAGES.length;
-  renderPetStatus(message, "", true);
-  idleMessageTimer = setTimeout(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS);
-}
-
-function updatePetStatus(state, message, detail) {
-  stopIdleMessageRotation();
-  idleRotationEnabled = state === "idle" && message.length === 0 && detail.length === 0;
-  if (idleRotationEnabled) {
-    showNextIdleMessage();
-    return;
-  }
+function updatePetStatus(message, detail) {
   renderPetStatus(message, detail);
 }
 
@@ -294,17 +264,24 @@ function setPetState(payload) {
   const detail = typeof payload?.detail === "string" ? payload.detail.slice(0, 32) : "";
   const nextState = normalizeState(payload?.state);
   if (!animationStarted || nextState !== currentState) setAnimationState(nextState);
-  // 标题和计时写入不同元素；idle 只显示无边框颜文字。
-  updatePetStatus(nextState, message, detail);
+  // 标题和计时写入不同元素；空闲时彻底隐藏状态区，不保留空白框。
+  updatePetStatus(message, detail);
 }
 
 // ---------- 单击与拖拽 ----------
 
+function cancelPendingSingleClick() {
+  if (pendingSingleClickTimer !== null) clearTimeout(pendingSingleClickTimer);
+  pendingSingleClickTimer = null;
+}
+
 function startDrag(event) {
-  if (event.button !== 0) return;
+  if (event.button !== 0 || event.isPrimary === false || dragStart) return;
+  // 第二次按下就取消单击；即使按住超过系统双击时间窗也不能误触发。
+  cancelPendingSingleClick();
+  suppressNextClick = false;
   const pointerId = event.pointerId;
   pet.setPointerCapture(pointerId);
-  window.taskPet.startWindowDrag();
   dragStart = {
     pointerId,
     startScreenX: event.screenX,
@@ -319,7 +296,15 @@ function moveDrag(event) {
   if (!dragStart || event.pointerId !== dragStart.pointerId) return;
   const dx = event.screenX - dragStart.startScreenX;
   const dy = event.screenY - dragStart.startScreenY;
-  if (Math.abs(dx) >= 5 || Math.abs(dy) >= 5) dragStart.moved = true;
+  if (!dragStart.moved) {
+    if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+    dragStart.moved = true;
+    pet.classList.add("dragging");
+    cancelPendingSingleClick();
+    doubleClickCandidate = false;
+    // Main 的 finishDrag 也会移动窗口，因此只为真正拖拽创建 native session。
+    window.taskPet.startWindowDrag();
+  }
   const stepX = event.screenX - dragStart.lastScreenX;
   dragStart.lastScreenX = event.screenX;
 
@@ -338,28 +323,39 @@ function endDrag(event) {
   if (!dragStart || event.pointerId !== dragStart.pointerId) return;
   // pointercancel 不会继续产生 click，不能让它误吞下一次正常单击。
   suppressNextClick = event.type === "pointerup" && dragStart.moved;
+  if (event.type !== "pointerup" || dragStart.moved) {
+    cancelPendingSingleClick();
+    doubleClickCandidate = false;
+  }
+  const moved = dragStart.moved;
   dragStart = null;
+  pet.classList.remove("dragging");
   lastDragDirection = null;
-  window.taskPet.finishDrag();
+  if (pet.hasPointerCapture(event.pointerId)) pet.releasePointerCapture(event.pointerId);
+  if (moved) window.taskPet.finishDrag();
 }
 
 function handlePetClick(event) {
+  // Completed click events do not consistently carry primary-pointer metadata.
   if (event.button !== 0) return;
   if (suppressNextClick) {
     suppressNextClick = false;
     return;
   }
   if (event.detail >= 2) {
-    clearTimeout(pendingSingleClickTimer);
-    pendingSingleClickTimer = null;
-    window.taskPet.performMouseAction("double");
+    cancelPendingSingleClick();
+    // 浏览器连续点击计数为 1、2、3…；一次连续点击序列只分发一次双击。
+    if (event.detail === 2 && doubleClickCandidate) window.taskPet.performMouseAction("double");
+    doubleClickCandidate = false;
     return;
   }
-  clearTimeout(pendingSingleClickTimer);
+  cancelPendingSingleClick();
+  doubleClickCandidate = true;
   pendingSingleClickTimer = setTimeout(() => {
     pendingSingleClickTimer = null;
+    doubleClickCandidate = false;
     window.taskPet.performMouseAction("left");
-  }, DOUBLE_CLICK_DELAY_MS);
+  }, doubleClickDelayMs);
 }
 
 function handlePetContextMenu(event) {
@@ -370,7 +366,6 @@ function handlePetContextMenu(event) {
 function handleVisibilityChange() {
   if (document.hidden) {
     stopFrameLoop();
-    stopIdleMessageRotation();
     return;
   }
 
@@ -378,15 +373,13 @@ function handleVisibilityChange() {
     drawFrame();
     scheduleNextFrame();
   }
-  if (idleRotationEnabled && idleMessageTimer === null) {
-    idleMessageTimer = setTimeout(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS);
-  }
 }
 
 // ---------- 首次初始化与 DOM 事件绑定 ----------
 
 window.taskPet.getInitialState().then((initial) => {
   const config = initial?.config || {};
+  doubleClickDelayMs = positiveInteger(config.doubleClickDelayMs, DEFAULT_DOUBLE_CLICK_DELAY_MS);
   applyAnimations(initial?.actions);
   applyPetSizePreset(config.preset);
   applyDebugBounds(config.debugPetBounds);
@@ -405,12 +398,12 @@ pet.addEventListener("pointerdown", startDrag);
 pet.addEventListener("pointermove", moveDrag);
 pet.addEventListener("pointerup", endDrag);
 pet.addEventListener("pointercancel", endDrag);
+pet.addEventListener("lostpointercapture", endDrag);
 pet.addEventListener("click", handlePetClick);
 pet.addEventListener("contextmenu", handlePetContextMenu);
 document.addEventListener("visibilitychange", handleVisibilityChange);
 window.addEventListener("beforeunload", () => {
-  clearTimeout(pendingSingleClickTimer);
+  cancelPendingSingleClick();
   stopFrameLoop();
-  stopIdleMessageRotation();
   document.removeEventListener("visibilitychange", handleVisibilityChange);
 });

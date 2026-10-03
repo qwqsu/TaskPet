@@ -5,6 +5,7 @@ import type { IpcMain, IpcMainInvokeEvent } from "electron";
 import type { ZodTypeAny } from "zod";
 import {
   DroppedPetZipInputSchema,
+  KeyboardCaptureModeInputSchema,
   UpdateAppSettingsInputSchema,
   type AppSettingsSnapshot,
   type DataActionResult,
@@ -33,6 +34,7 @@ export interface RegisterSettingsIpcOptions {
   openStartupApps: () => Promise<void>;
   openGitHub: () => Promise<void>;
   openLicenses: () => Promise<void>;
+  setKeyboardCaptureActive: (active: boolean) => void;
 }
 
 function success<T>(data: T): TaskApiResult<T> {
@@ -91,6 +93,11 @@ export function registerSettingsIpc(options: RegisterSettingsIpcOptions): () => 
   handle(SETTINGS_CHANNELS.openStartupApps, EmptyTaskInputSchema, options.openStartupApps);
   handle(SETTINGS_CHANNELS.openGitHub, EmptyTaskInputSchema, options.openGitHub);
   handle(SETTINGS_CHANNELS.openLicenses, EmptyTaskInputSchema, options.openLicenses);
+  handle(
+    SETTINGS_CHANNELS.keyboardCaptureMode,
+    KeyboardCaptureModeInputSchema,
+    ({ active }) => options.setKeyboardCaptureActive(active)
+  );
 
   return () => {
     for (const channel of registeredChannels) options.ipcMain.removeHandler(channel);

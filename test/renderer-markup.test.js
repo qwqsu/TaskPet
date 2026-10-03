@@ -37,22 +37,19 @@ test("pet renderer applies preset-scaled task and runtime font sizes", () => {
   assert.match(styles, /\.pet-status-detail\s*\{[^}]*font-variant-numeric: tabular-nums/s);
   assert.equal(messageFontSize, "var(--status-message-font-size)");
   assert.equal(detailFontSize, "var(--status-detail-font-size)");
-  assert.match(styles, /font-size: var\(--idle-font-size\)/);
+  assert.doesNotMatch(styles, /--idle-font-size/);
 });
 
-test("idle pet shows only kaomoji without the white rounded status frame", () => {
+test("idle pet removes kaomoji, timers, and the empty status frame", () => {
   const html = fs.readFileSync(path.join(rendererRoot, "index.html"), "utf8");
   const source = fs.readFileSync(path.join(rendererRoot, "renderer.js"), "utf8");
   const styles = fs.readFileSync(path.join(rendererRoot, "styles.css"), "utf8");
 
   assert.match(html, /id="petStatus"[^>]*hidden/);
   assert.match(styles, /\.pet-status\[hidden\]\s*\{[^}]*display:\s*none/s);
-  assert.match(styles, /\.pet-status\.idle-text\s*\{[^}]*border:\s*0/s);
-  assert.match(styles, /\.pet-status\.idle-text\s*\{[^}]*background:\s*transparent/s);
-  assert.match(styles, /\.pet-status\.idle-text\s*\{[^}]*box-shadow:\s*none/s);
-  assert.match(source, /renderPetStatus\(message, "", true\)/);
-  assert.match(source, /setTimeout\(showNextIdleMessage, IDLE_MESSAGE_INTERVAL_MS\)/);
-  assert.match(source, /updatePetStatus\(nextState, message, detail\)/);
+  assert.doesNotMatch(styles, /idle-text|idle-font-size/);
+  assert.doesNotMatch(source, /IDLE_MESSAGES|idleMessage|showNextIdleMessage|颜文字/);
+  assert.match(source, /updatePetStatus\(message, detail\)/);
 });
 
 test("pet renderer consumes the Main Process preset without a second zoom model", () => {
@@ -78,7 +75,7 @@ test("pet renderer pauses animation work while the pet window is hidden", () => 
   assert.match(source, /if \(document\.hidden \|\| !animationStarted\) return/);
   assert.match(source, /function handleVisibilityChange\(\)/);
   assert.match(source, /document\.addEventListener\("visibilitychange", handleVisibilityChange\)/);
-  assert.match(source, /stopIdleMessageRotation\(\)/);
+  assert.doesNotMatch(source, /stopIdleMessageRotation|idleMessageTimer/);
 });
 
 test("pet renderer limits animation frames to a custom atlas column count", () => {
@@ -146,6 +143,6 @@ test("pet dragging keeps native cursor coordinates and window bounds in the main
   assert.match(preload, /startWindowDrag: \(\) => ipcRenderer\.send\("taskpet:start-window-drag"\)/);
   assert.match(preload, /moveWindow: \(\) => ipcRenderer\.send\("taskpet:move-window"\)/);
   assert.doesNotMatch(source, /windowX: bounds\.x|windowY: bounds\.y/);
-  assert.doesNotMatch(main, /petWindow\.setPosition\(/);
+  assert.match(main, /function positionRadialMenu\(/);
   assert.doesNotMatch(preload, /resize-window|getWindowBounds|resizeWindow/);
 });
