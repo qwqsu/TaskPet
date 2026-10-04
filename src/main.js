@@ -930,6 +930,14 @@ function showRadialMenu() {
   return true;
 }
 
+function toggleRadialMenu() {
+  if (radialMenuWindow?.isVisible()) {
+    hideRadialMenu();
+    return true;
+  }
+  return showRadialMenu();
+}
+
 function togglePetVisibility() {
   if (!petWindow || petWindow.isDestroyed()) return false;
   if (petWindow.isVisible()) {
@@ -1051,8 +1059,8 @@ function performPetMouseAction(action) {
     case "open-settings":
       taskSystem?.toggleSettings();
       break;
-    case "open-radial-menu":
-      showRadialMenu();
+    case "toggle-radial-menu":
+      toggleRadialMenu();
       break;
     case "toggle-monitoring":
       if (taskSystem) taskSystem.setMonitoringPaused(!taskSystem.monitoringPaused);
@@ -1208,10 +1216,12 @@ function registerIpcHandlers() {
   ipcMain.handle("taskpet:pet-mouse-action", (event, gesture) => {
     if (!isPetWindowSender(event)) return false;
     if (gesture === "left" && settings.ignoreMouseEvents) return false;
-    if (radialMenuWindow?.isVisible()) hideRadialMenu();
     const bindings = settings.mouseBindings || DEFAULT_PET_MOUSE_BINDINGS;
     const action = petMouseActionForGesture(bindings, gesture);
-    return action ? performPetMouseAction(action) : false;
+    if (!action) return false;
+    // 开关轮盘菜单需要看到当前可见状态，其他桌宠动作仍先关闭轮盘。
+    if (action !== "toggle-radial-menu" && radialMenuWindow?.isVisible()) hideRadialMenu();
+    return performPetMouseAction(action);
   });
 
   ipcMain.on("taskpet:drag-direction", (event, direction) => {

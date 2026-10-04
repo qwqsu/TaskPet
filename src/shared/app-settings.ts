@@ -65,7 +65,7 @@ export const PET_MOUSE_ACTIONS = Object.freeze([
   "open-panel",
   "quick-add",
   "open-settings",
-  "open-radial-menu",
+  "toggle-radial-menu",
   "toggle-monitoring",
   "recall-pet",
   "quit",
@@ -84,7 +84,7 @@ export interface PetMouseBindings {
 export const DEFAULT_PET_MOUSE_BINDINGS: Readonly<PetMouseBindings> = Object.freeze({
   leftClick: "open-panel",
   doubleClick: "toggle-monitoring",
-  rightClick: "open-radial-menu"
+  rightClick: "toggle-radial-menu"
 });
 
 export const MIN_PET_OPACITY = 20;
@@ -306,7 +306,16 @@ export function normalizePetSize(value: unknown, legacyZoom?: unknown): PetSize 
 }
 
 export function normalizePetMouseBindings(value: unknown): PetMouseBindings {
-  const parsed = PetMouseBindingsSchema.safeParse(value);
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { ...DEFAULT_PET_MOUSE_BINDINGS };
+  }
+
+  // 兼容旧版本已保存的“打开轮盘菜单”动作，升级后统一迁移为开关动作。
+  const migrated = { ...(value as Record<string, unknown>) };
+  for (const key of ["leftClick", "doubleClick", "rightClick"]) {
+    if (migrated[key] === "open-radial-menu") migrated[key] = "toggle-radial-menu";
+  }
+  const parsed = PetMouseBindingsSchema.safeParse(migrated);
   if (!parsed.success) return { ...DEFAULT_PET_MOUSE_BINDINGS };
   // 1.0.1 之前的默认右键动作是“打开设置”；只迁移完整的旧默认组合，
   // 用户自定义过任意一项时仍原样保留。
