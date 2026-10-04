@@ -36,7 +36,7 @@ const snapshot: AppSettingsSnapshot = {
   mouseBindings: {
     leftClick: "open-panel",
     doubleClick: "toggle-monitoring",
-    rightClick: "open-radial-menu"
+    rightClick: "toggle-radial-menu"
   },
   keyboardMapping: { enabled: true, mappings: [] },
   keyboardInputSupported: true,

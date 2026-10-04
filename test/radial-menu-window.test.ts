@@ -64,6 +64,20 @@ test("radial menu uses dynamic actions, transparent center and explicit dismissa
   assert.match(main, /if \(radialMenuWindow && !radialMenuWindow\.isDestroyed\(\)\) return radialMenuWindow/);
 });
 
+test("mouse binding toggles the radial menu instead of only opening it", () => {
+  const root = path.join(__dirname, "..", "..");
+  const main = fs.readFileSync(path.join(root, "src", "main.js"), "utf8");
+  const settings = fs.readFileSync(
+    path.join(root, "src", "renderer", "settings", "settings.ts"),
+    "utf8"
+  );
+  assert.match(settings, /value: "toggle-radial-menu", label: "打开\/关闭轮盘菜单"/);
+  assert.match(main, /function toggleRadialMenu\(\)/);
+  assert.match(main, /case "toggle-radial-menu":\s*\n\s*toggleRadialMenu\(\);/);
+  assert.match(main, /action !== "toggle-radial-menu"/);
+  assert.doesNotMatch(main, /case "open-radial-menu":/);
+});
+
 test("odd-sized wheel anchors remain stable and reserve the footer at every edge", () => {
   const area={x:-1920,y:-100,width:1920,height:1080};
   for(const size of [253,429,605]) for(const point of [

@@ -22,7 +22,7 @@
 
 TaskPet 是一个本地运行的桌面任务助手。你可以创建任务，并把自己选择的 Windows 程序绑定到任务上；当目标程序运行时，TaskPet 自动开始累计实际使用时间，程序退出后暂停累计，达到目标时长后自动完成任务。
 
-<strong>使用说明</strong>：左键打开/关闭任务面板，右键打开轮盘菜单；轮盘菜单中的设置项可打开设置窗口。左键、双击和右键动作均可在设置中重新绑定。
+<strong>使用说明</strong>：左键打开/关闭任务面板，右键打开/关闭轮盘菜单；轮盘菜单中的设置项可打开设置窗口。左键、双击和右键动作均可在设置中重新绑定。
 
 <strong>本人体验</strong>：我感觉还不错，打游戏时可以计时，只要你不动桌宠就会置顶在游戏页面上，还能一键启动游戏，差不多相当于一个任务管理和时间统计工具，多任务时，隔3s会切换显示，桌宠大小设置看情况再修改了，目前感觉良好
 
@@ -45,22 +45,23 @@ TaskPet 是一个本地运行的桌面任务助手。你可以创建任务，并
 
 ## V1.1 交互更新
 
-- 轮盘菜单通过桌宠右键打开，轮盘中心保持透明，桌宠仍可单击、双击、拖拽和右键操作。
+- 轮盘菜单通过桌宠右键打开/关闭，轮盘中心保持透明，桌宠仍可单击、双击、拖拽和右键操作。
 - 轮盘靠近屏幕边缘时会自动调整位置，透明度与大小调节滑块固定在轮盘下方。
 - 轮盘可通过 Esc 或点击外部关闭，不设置额外的关闭按钮；普通左键单击不会被误判为拖动。
 - 开启“忽略鼠标事件”后只忽略普通左键单击，双击、拖动和右键操作仍然有效。
 
 ## 展示
 <p>  <strong>任务面板 </strong></p>
-<img width="436" height="499" alt="PixPin_2026-08-25_23-06-21" src="https://github.com/user-attachments/assets/40fcf663-1316-4336-b55b-0645d70b8dd2" />
-<p>  <strong>累计时长页面 </strong></p>
-<img width="431" height="502" alt="PixPin_2026-08-25_23-06-38" src="https://github.com/user-attachments/assets/f042affc-6086-4020-8450-527f9ac85a6a" />
+<img width="565" height="669" alt="PixPin_2026-10-03_18-00-39" src="https://github.com/user-attachments/assets/280921f2-eb35-4129-a713-34d0032ee4f3" />
+
+<p>  <strong>轮盘界面 </strong></p>
+<img width="356" height="456" alt="PixPin_2026-10-03_18-02-04" src="https://github.com/user-attachments/assets/66122940-1215-45b0-9319-4bee88635454" />
+
 <p>  <strong>设置 </strong></p>
-<img width="801" height="536" alt="PixPin_2026-08-25_23-06-53" src="https://github.com/user-attachments/assets/1f7756ac-8417-497f-aa83-6be3732a880d" />
-<p>  <strong>桌宠替换页面 </strong></p>
-<img width="801" height="536" alt="PixPin_2026-08-25_23-11-08" src="https://github.com/user-attachments/assets/54a56d5d-29f7-4ced-be24-65096467ec60" />
-<p>  <strong>任务执行中画面 </strong></p>
-<img width="188" height="155" alt="PixPin_2026-08-25_23-12-32" src="https://github.com/user-attachments/assets/5e22d7ef-0c7e-4125-8486-37079c806b6e" />
+<img width="1066" height="713" alt="PixPin_2026-10-03_18-01-13" src="https://github.com/user-attachments/assets/5b12d317-4122-4380-a9d0-a664655ad624" />
+
+
+
 
 
 
@@ -135,7 +136,7 @@ Electron Main Process
 
 ## 轮盘菜单与键盘映射
 
-轮盘菜单是独立的透明窗口，默认通过桌宠右键打开。内置项目可以在设置中启用、停用和排序，也可以添加程序（`.exe`）或快捷方式（`.lnk`）作为自定义入口。轮盘大小范围为 50–130，默认值为 90；轮盘标签贴在图标下方，不显示顺序数字。
+轮盘菜单是独立的透明窗口，默认通过桌宠右键打开/关闭。内置项目可以在设置中启用、停用和排序，也可以添加程序（`.exe`）或快捷方式（`.lnk`）作为自定义入口。轮盘大小范围为 50–130，默认值为 90；轮盘标签贴在图标下方，不显示顺序数字。
 
 轮盘提供任务面板、快速添加、设置、监控、桌宠、忽略鼠标事件、置顶、桌宠透明度/大小、轮盘透明度/大小、QQ 音乐和退出等操作。QQ 音乐区域只显示上一首、暂停/播放和下一首按钮。轮盘中心不会遮挡桌宠，打开调节项时滑块固定在轮盘下方。
 

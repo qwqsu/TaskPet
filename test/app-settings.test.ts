@@ -155,12 +155,21 @@ test("keyboard mappings keep only supported unique keys and eight-character labe
 
 test("pet mouse bindings use fixed actions and safe defaults", () => {
   assert.deepEqual(normalizePetMouseBindings(null), DEFAULT_PET_MOUSE_BINDINGS);
-  assert.equal(DEFAULT_PET_MOUSE_BINDINGS.rightClick, "open-radial-menu");
+  assert.equal(DEFAULT_PET_MOUSE_BINDINGS.rightClick, "toggle-radial-menu");
   assert.deepEqual(normalizePetMouseBindings({
     leftClick: "open-panel",
     doubleClick: "toggle-monitoring",
     rightClick: "open-settings"
   }), DEFAULT_PET_MOUSE_BINDINGS, "the complete legacy default should migrate");
+  assert.deepEqual(normalizePetMouseBindings({
+    leftClick: "open-radial-menu",
+    doubleClick: "toggle-monitoring",
+    rightClick: "quit"
+  }), {
+    leftClick: "toggle-radial-menu",
+    doubleClick: "toggle-monitoring",
+    rightClick: "quit"
+  }, "the old open-only action should migrate to the toggle action");
   const bindings = normalizePetMouseBindings({
     leftClick: "quick-add",
     doubleClick: "toggle-monitoring",

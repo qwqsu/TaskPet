@@ -14,7 +14,7 @@ type PetMouseAction =
   | "open-panel"
   | "quick-add"
   | "open-settings"
-  | "open-radial-menu"
+  | "toggle-radial-menu"
   | "toggle-monitoring"
   | "recall-pet"
   | "quit"
@@ -126,7 +126,7 @@ const ACTION_OPTIONS: ReadonlyArray<{ value: PetMouseAction; label: string }> = 
   { value: "open-panel", label: "打开 / 关闭任务面板" },
   { value: "quick-add", label: "快速添加任务" },
   { value: "open-settings", label: "打开 / 关闭设置" },
-  { value: "open-radial-menu", label: "打开轮盘菜单" },
+  { value: "toggle-radial-menu", label: "打开/关闭轮盘菜单" },
   { value: "toggle-monitoring", label: "暂停 / 恢复任务监控" },
   { value: "recall-pet", label: "召回桌宠" },
   { value: "quit", label: "退出 TaskPet" },
