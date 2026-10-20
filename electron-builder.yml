@@ -5,7 +5,7 @@ icon: src/assets/logo.png
 publish: null
 
 directories:
-  output: dist/TaskPetV1.1
+  output: dist/TaskPetV1.2
 
 files:
   - '!AGENTS.md'

@@ -93,7 +93,8 @@ export class PetStateMachine {
     }
 
     // 走到这里的事件是 TASK_COMPLETED；完成态拥有短暂显示优先级。
-    this.removeActiveTask(event.task.taskId);
+    if (event.task.active) this.activeTasks.set(event.task.taskId, event.task);
+    else this.removeActiveTask(event.task.taskId);
     this.showingDone = true;
     this.clearRotationTimer();
     if (this.doneTimer !== null) this.scheduler.clearTimeout(this.doneTimer);

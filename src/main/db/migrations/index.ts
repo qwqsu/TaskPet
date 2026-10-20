@@ -5,8 +5,9 @@
 import type Database from "better-sqlite3";
 import { initialMigration, type Migration } from "./001-init";
 import { processRuntimeMigration } from "./002-process-runtime";
+import { continueTimingMigration } from "./003-continue-timing";
 
-const migrations: readonly Migration[] = [initialMigration, processRuntimeMigration];
+const migrations: readonly Migration[] = [initialMigration, processRuntimeMigration, continueTimingMigration];
 
 export interface MigrationHooks {
   beforeApply?(pendingMigrations: readonly Migration[]): void;

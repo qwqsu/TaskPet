@@ -52,6 +52,7 @@ export const CreateTaskInputSchema = z.object({
   taskType: z.enum(["daily", "one_time"]),
   completionMode: taskCompletionModeSchema,
   targetDurationSec: z.number().int().nonnegative(),
+  continueTimingAfterCompletion: z.boolean().optional().default(false),
   sortOrder: z.number().int().optional()
 }).strict().superRefine(validateDuration);
 
@@ -60,6 +61,7 @@ export const UpdateTaskPatchSchema = z.object({
   description: descriptionSchema.optional(),
   completionMode: taskCompletionModeSchema.optional(),
   targetDurationSec: z.number().int().nonnegative().optional(),
+  continueTimingAfterCompletion: z.boolean().optional(),
   sortOrder: z.number().int().optional()
 }).strict().refine((patch) => Object.keys(patch).length > 0, "至少需要修改一个字段");
 
@@ -82,6 +84,8 @@ export const HistoryQuerySchema = z.object({
 }).strict().refine((query) => query.fromDate <= query.toDate, {
   path: ["fromDate"],
   message: "开始日期不能晚于结束日期"
+}).refine(query => new Date(query.toDate).getTime() - new Date(query.fromDate).getTime() <= 366 * 86_400_000, {
+  message: "单次最多查询 366 天的历史"
 });
 
 export const TimeStatsQuerySchema = z.object({

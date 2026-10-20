@@ -145,7 +145,7 @@ export class RuntimeTracker {
 
     const item = this.findOrCreateRuntimeCandidate(taskId, observedAt);
     if (!item) return false;
-    if (item.task.completionMode === "process_start") {
+    if (item.task.completionMode === "process_start" && !item.task.continueTimingAfterCompletion) {
       return this.completeProcessStart(item, observedAt);
     }
     const timestamp = observedAt.toISOString();
@@ -171,7 +171,7 @@ export class RuntimeTracker {
 
     const active: ActiveRuntime = {
       task: item.task,
-      occurrence: { ...item.occurrence, status: "active", updatedAt: timestamp },
+      occurrence: { ...item.occurrence, status: item.occurrence.status === "completed" ? "completed" : "active", updatedAt: timestamp },
       session,
       processInfo,
       baseAccumulatedSec: item.occurrence.accumulatedSec,
@@ -181,6 +181,11 @@ export class RuntimeTracker {
     this.active.set(taskId, active);
     this.ensureTimers();
     this.events.emit({ type: "TASK_ACTIVE", task: this.snapshot(active, observedAt.getTime()) });
+    if (item.task.completionMode === "process_start" && item.occurrence.status !== "completed") {
+      this.completeProcessStart(item, observedAt);
+      const completed = this.tasks.findOccurrenceItem(item.occurrence.id);
+      if (completed) active.occurrence = completed.occurrence;
+    }
     this.advanceTaskTo(taskId, observedAt.getTime());
     return true;
   }
@@ -253,16 +258,23 @@ export class RuntimeTracker {
   }
 
   announceManualCompletion(item: TaskListItem): void {
+    const active = this.active.get(item.task.id);
+    if (active) active.occurrence = item.occurrence;
     this.events.emit({
       type: "TASK_COMPLETED",
-      task: this.itemSnapshot(item, false)
+      task: active ? this.snapshot(active, this.clock.now().getTime()) : this.itemSnapshot(item, false)
     });
   }
 
   announceReopened(item: TaskListItem): void {
+    const active = this.active.get(item.task.id);
+    if (active) {
+      active.occurrence = { ...item.occurrence, status: "active" };
+      this.tasks.markOccurrenceActive(item.occurrence.id, this.clock.now().toISOString());
+    }
     this.events.emit({
       type: "TASK_REOPENED",
-      task: this.itemSnapshot(item, false)
+      task: active ? this.snapshot(active, this.clock.now().getTime()) : this.itemSnapshot(item, false)
     });
   }
 
@@ -303,9 +315,11 @@ export class RuntimeTracker {
     if (!changed) return false;
     const completed = this.tasks.findOccurrenceItem(item.occurrence.id);
     if (!completed) return false;
+    const active = this.active.get(item.task.id);
+    if (active) active.occurrence = completed.occurrence;
     this.events.emit({
       type: "TASK_COMPLETED",
-      task: this.itemSnapshot(completed, false)
+      task: active ? this.snapshot(active, observedAt.getTime()) : this.itemSnapshot(completed, false)
     });
     return true;
   }
@@ -325,7 +339,8 @@ export class RuntimeTracker {
 
       if (completionMs !== null && completionMs <= Math.min(limitMs, midnightMs)) {
         this.completeDuration(active, completionMs);
-        return;
+        active = this.active.get(taskId);
+        continue;
       }
 
       if (midnightMs <= limitMs) {
@@ -338,7 +353,7 @@ export class RuntimeTracker {
   }
 
   private completionTime(active: ActiveRuntime): number | null {
-    if (active.task.completionMode !== "duration" || active.task.targetDurationSec <= 0) {
+    if (active.occurrence.status === "completed" || active.task.completionMode !== "duration" || active.task.targetDurationSec <= 0) {
       return null;
     }
     const remaining = active.task.targetDurationSec - active.baseAccumulatedSec;
@@ -356,15 +371,23 @@ export class RuntimeTracker {
 
     // Session 收尾和 occurrence 完成同事务提交，避免只完成其中一半。
     this.database.transaction(() => {
-      this.sessions.finalize(active.session.id, completedAt, sessionDuration);
+      if (active.task.continueTimingAfterCompletion) {
+        this.sessions.checkpoint(active.session.id, completedAt, sessionDuration);
+      } else {
+        this.sessions.finalize(active.session.id, completedAt, sessionDuration);
+      }
       changed = this.tasks.completeDurationOccurrence(
         active.occurrence.id,
         accumulatedSec,
         completedAt
       );
     })();
-    this.active.delete(active.task.id);
-    this.stopTimersIfIdle();
+    if (active.task.continueTimingAfterCompletion) {
+      active.occurrence = this.tasks.findOccurrenceItem(active.occurrence.id)!.occurrence;
+    } else {
+      this.active.delete(active.task.id);
+      this.stopTimersIfIdle();
+    }
 
     if (changed) {
       this.events.emit({
@@ -373,7 +396,7 @@ export class RuntimeTracker {
           ...this.snapshot(active, completedMs),
           occurrenceStatus: "completed",
           accumulatedSec,
-          active: false
+          active: active.task.continueTimingAfterCompletion
         }
       });
     }
@@ -399,7 +422,7 @@ export class RuntimeTracker {
       type: "TASK_PAUSED",
       task: {
         ...this.snapshot(active, effectiveStoppedMs),
-        occurrenceStatus: "pending",
+        occurrenceStatus: active.occurrence.status === "completed" ? "completed" : "pending",
         accumulatedSec,
         active: false
       }
@@ -471,7 +494,7 @@ export class RuntimeTracker {
 
     const nextActive: ActiveRuntime = {
       task: nextItem.task,
-      occurrence: { ...nextItem.occurrence, status: "active", updatedAt: timestamp },
+      occurrence: { ...nextItem.occurrence, status: nextItem.occurrence.status === "completed" ? "completed" : "active", updatedAt: timestamp },
       session: nextSession,
       processInfo: active.processInfo,
       baseAccumulatedSec: nextItem.occurrence.accumulatedSec,
@@ -480,6 +503,10 @@ export class RuntimeTracker {
     };
     this.active.set(active.task.id, nextActive);
     this.events.emit({ type: "TASK_ACTIVE", task: this.snapshot(nextActive, midnightMs) });
+    if (nextActive.task.completionMode === "process_start") {
+      this.completeProcessStart(nextItem, boundary);
+      nextActive.occurrence = this.tasks.findOccurrenceItem(nextItem.occurrence.id)!.occurrence;
+    }
   }
 
   private persistCheckpoint(active: ActiveRuntime, requestedMs: number): void {
@@ -505,7 +532,7 @@ export class RuntimeTracker {
       taskId: active.task.id,
       occurrenceId: active.occurrence.id,
       title: active.task.title,
-      occurrenceStatus: "active",
+      occurrenceStatus: active.occurrence.status,
       completionMode: active.task.completionMode,
       accumulatedSec: active.baseAccumulatedSec + elapsedSeconds(active.startedAtMs, effectiveMs),
       targetDurationSec: active.task.targetDurationSec,

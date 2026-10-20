@@ -2,7 +2,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { win32 } from "node:path";
 import { createQqMusicHelperScript } from "./qq-music-helper";
 
-export type QqMusicCommand = "status" | "previous" | "toggle" | "next";
+export type QqMusicCommand = "status" | "previous" | "toggle" | "next" | "play";
 export interface QqMusicResult {
   available: boolean;
   playing?: boolean;
@@ -14,6 +14,8 @@ export interface QqMusicServiceOptions {
   timeoutMs?: number;
   /** Dependency injection for tests; production uses the system PowerShell. */
   spawnHelper?: typeof spawn;
+  identityPattern?: string;
+  executablePath?: string;
 }
 
 /** One targeted GSMTC request per call. No global keys, queues, or retries.
@@ -27,17 +29,21 @@ export class QqMusicService {
   private readonly spawnHelper: typeof spawn;
   private disposed = false;
   private pending?: { cancel: () => void; result: Promise<QqMusicResult> };
+  private readonly identityPattern?: string;
+  private readonly executablePath?: string;
 
   constructor(options: QqMusicServiceOptions = {}) {
     this.platform = options.platform ?? process.platform;
     const timeout = options.timeoutMs ?? 7000;
     this.timeoutMs = Number.isFinite(timeout) ? Math.min(15000, Math.max(1, timeout)) : 7000;
     this.spawnHelper = options.spawnHelper ?? spawn;
+    this.identityPattern = options.identityPattern;
+    this.executablePath = options.executablePath;
   }
 
   async execute(command: QqMusicCommand): Promise<QqMusicResult> {
     if (this.disposed) return { available: false, error: "QQ 音乐控制服务已关闭。" };
-    if (!["status", "previous", "toggle", "next"].includes(command)) {
+    if (!["status", "previous", "toggle", "next", "play"].includes(command)) {
       return { available: false, error: "不支持此 QQ 音乐操作。" };
     }
     if (this.platform !== "win32") return { available: false };
@@ -81,7 +87,7 @@ export class QqMusicService {
           "System32", "WindowsPowerShell", "v1.0", "powershell.exe");
         child = this.spawnHelper(executable, [
           "-NoLogo", "-NoProfile", "-NonInteractive", "-EncodedCommand",
-          Buffer.from(createQqMusicHelperScript(command), "utf16le").toString("base64")
+          Buffer.from(createQqMusicHelperScript(command, this.identityPattern, this.executablePath), "utf16le").toString("base64")
         ], { windowsHide: true, shell: false, stdio: ["ignore", "pipe", "pipe"] });
         child.stdout?.setEncoding("utf8");
         child.stdout?.on("data", (chunk: string) => {

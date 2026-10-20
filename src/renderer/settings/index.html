@@ -11,6 +11,8 @@
     <title>TaskPet 设置</title>
     <link rel="icon" type="image/png" href="../../assets/logo.png" />
     <link rel="stylesheet" href="./settings.css" />
+    <link rel="stylesheet" href="../themes.css" />
+    <script src="../theme.js"></script>
   </head>
   <body>
     <main class="settings-shell">
@@ -26,6 +28,9 @@
           <button class="nav-item" type="button" data-target="petSection">
             <span aria-hidden="true">🐾</span>桌宠
           </button>
+          <button class="nav-item" type="button" data-target="appearanceSection">
+            <span aria-hidden="true">◐</span>外观与主题
+          </button>
           <button class="nav-item" type="button" data-target="interactionSection">
             <span aria-hidden="true">⌨</span>互动
           </button>
@@ -39,10 +44,6 @@
             <span aria-hidden="true">ⓘ</span>关于
           </button>
         </nav>
-        <div class="sidebar-pet" aria-hidden="true">
-          <span>🐾</span>
-          <img src="../../assets/logo.png" alt="" />
-        </div>
       </aside>
 
       <section class="settings-content">
@@ -176,6 +177,23 @@
           </div>
         </dialog>
 
+        <!-- §2.1：当前主题优先、主题选择次之；使用共享语义色、12px 卡片圆角、16/24px 分组。 -->
+        <section id="appearanceSection" class="settings-section" data-section="appearanceSection">
+          <h1>外观与主题</h1>
+          <div class="settings-card appearance-card">
+            <div class="setting-row">
+              <div class="row-copy"><strong id="currentThemeName">经典暖杏</strong><small>只调整软件界面，不会修改桌宠角色或动画图集。</small></div>
+              <button id="resetThemeButton" type="button">恢复默认</button>
+            </div>
+            <div id="themeChoices" class="theme-choices" role="group" aria-label="主题皮肤"></div>
+            <div class="setting-row">
+              <div class="row-copy"><strong>跟随 Windows 外观</strong><small>浅色使用经典暖杏，深色使用深夜墨蓝；选择皮肤将改为手动模式。</small></div>
+              <label class="switch" aria-label="跟随 Windows 外观"><input id="systemThemeToggle" type="checkbox" /><span></span></label>
+            </div>
+            <p class="radial-help">轮盘继续使用已有动画开关，所有界面遵循系统“减少动画”偏好。</p>
+          </div>
+        </section>
+
         <section id="interactionSection" class="settings-section" data-section="interactionSection">
           <h1>互动</h1>
           <div class="settings-card interaction-card">
@@ -237,6 +255,7 @@
             <p id="radialFeedback" class="radial-feedback" role="status" aria-live="polite" hidden></p>
             <ol id="radialItemList" class="radial-item-list" aria-label="轮盘菜单项目"></ol>
             <p class="radial-help">支持程序（.exe）和快捷方式（.lnk）；暂不提供 URI 或启动参数。应用图标不可用时显示通用图标。</p>
+            <p class="radial-help">音乐项与应用入口一样，通过“编辑”选择启动目标，左键直接打开播放器；悬停或右键显示上一首、播放/暂停、下一首。媒体控制取决于播放器对 Windows 系统媒体控制的支持。</p>
           </div>
         </section>
         <dialog id="radialAppDialog" class="custom-pet-dialog radial-app-dialog" aria-labelledby="radialAppDialogTitle">

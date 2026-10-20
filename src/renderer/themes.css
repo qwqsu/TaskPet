@@ -1,0 +1,106 @@
+/* 共享语义色。经典主题延续现有暖杏；新色阶由 Refactoring UI palette 工具生成。
+ * §2.1 层级 / §3.6 分组 / §5.6 对比度：组件只使用语义变量，主题不影响桌宠图集。
+ */
+:root {
+  color-scheme: light;
+  --color-bg: #faf9f5;
+  --color-surface: #ffffff;
+  --color-sunken: #efe9de;
+  --color-hover: #f5f0e8;
+  --color-text: #141413;
+  --color-text-muted: #555a50;
+  --color-border: #e6dfd8;
+  --color-primary: #964732;
+  --color-primary-hover: #833726;
+  --color-primary-soft: #f3dfd5;
+  --color-on-primary: #ffffff;
+  --color-danger: #a54f45;
+  --color-danger-soft: #fff0e9;
+  --color-success: #28674d;
+  --color-success-soft: #ebffff;
+  --color-warning: #80520e;
+  --color-warning-soft: #fff9ed;
+  --color-overlay: rgba(24, 23, 21, .4);
+  --color-inverse: #181715;
+  --color-on-inverse: #faf9f5;
+  --color-highlight: #e0bb88;
+  --color-focus-soft: rgba(169, 88, 62, .18);
+  --shadow-card: 0 4px 6px rgba(24, 23, 21, .08);
+  --shadow-menu: 0 5px 15px rgba(24, 23, 21, .16);
+  --shadow-dialog: 0 15px 35px rgba(24, 23, 21, .2);
+  --radius-card: 12px;
+  --radius-control: 8px;
+  /* 兼容现有各窗口的变量命名，布局与组件共用同一色表。 */
+  --ink: var(--color-text);
+  --muted: var(--color-text-muted);
+  --paper: var(--color-bg);
+  --cream: var(--color-bg);
+  --card: var(--color-sunken);
+  --line: var(--color-border);
+  --accent: var(--color-primary);
+  --accent-strong: var(--color-primary);
+  --accent-soft: var(--color-primary-soft);
+  --danger: var(--color-danger);
+  --coral: var(--color-primary);
+  --pressed: var(--color-primary-hover);
+  --dark: var(--color-inverse);
+  --shadow: var(--shadow-dialog);
+}
+:root[data-theme="midnight-blue"] {
+  color-scheme: dark;
+  --color-bg: #11121f;
+  --color-surface: #222435;
+  --color-sunken: #222435;
+  --color-hover: #35394c;
+  --color-text: #f6fbfd;
+  --color-text-muted: #b1c0c8;
+  --color-border: #494e62;
+  --color-primary: #e0bb88;
+  --color-primary-hover: #f7dab2;
+  --color-primary-soft: #35394c;
+  --color-on-primary: #11121f;
+  --color-danger: #f2bae3;
+  --color-danger-soft: #35394c;
+  --color-success: #84cac0;
+  --color-success-soft: #222435;
+  --color-warning: #e0bb88;
+  --color-warning-soft: #35394c;
+  --color-inverse: #35394c;
+  --color-on-inverse: #f6fbfd;
+  --color-highlight: #f7dab2;
+  --color-focus-soft: #494e62;
+}
+:root[data-theme="cream"] {
+  --color-bg: #fff6eb;
+  --color-sunken: #fff6eb;
+  --color-hover: #f3dfd5;
+}
+:root[data-theme="forest"] {
+  --color-bg: #ebffff;
+  --color-sunken: #ebffff;
+  --color-hover: #b3e9e4;
+  --color-primary: #28674d;
+  --color-primary-hover: #1a5132;
+  --color-primary-soft: #b3e9e4;
+  --color-highlight: #84cac0;
+}
+:root[data-theme="sakura"] {
+  --color-bg: #ffebf9;
+  --color-sunken: #ffebf9;
+  --color-hover: #f2bae3;
+  --color-primary: #7f3046;
+  --color-primary-hover: #6b2333;
+  --color-primary-soft: #f2bae3;
+  --color-highlight: #dc93c4;
+}
+/* 原生弹出列表不会可靠继承 select 的背景；显式成对设色，避免深色主题白底白字（§5.6）。 */
+select option, select optgroup {
+  color: var(--color-text);
+  background-color: var(--color-surface);
+}
+button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible,
+[tabindex]:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 3px; }
+button:disabled { cursor: not-allowed; }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; transition: none !important; }
+}

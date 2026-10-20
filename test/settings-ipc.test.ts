@@ -40,12 +40,12 @@ const snapshot: AppSettingsSnapshot = {
   },
   keyboardMapping: { enabled: true, mappings: [] },
   keyboardInputSupported: true,
-  activePetKey: "pets:yinienie",
+  activePetKey: "pets:deepseek",
   pets: [{
-    key: "pets:yinienie",
-    displayName: "yinienie",
+    key: "pets:deepseek",
+    displayName: "deepseek酱",
     description: "默认桌宠",
-    spritesheetUrl: "file:///TaskPet/yinienie/spritesheet.webp",
+    spritesheetUrl: "file:///TaskPet/deepseek/spritesheet.webp",
     frame: { width: 192, height: 208, columns: 8, rows: 9 }
   }],
   dataDirectory: "C:\\Users\\Test\\AppData\\Roaming\\TaskPet",
@@ -65,7 +65,11 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
   let droppedZipImports = 0;
   let folderImports = 0;
   let keyboardCaptureActive = false;
+  let musicSelections = 0;
+  let musicRequests = 0;
   const dispose = registerSettingsIpc({
+    chooseMusicPlayer: async () => { musicSelections++; return snapshot; },
+    testMusicPlayer: async () => { musicRequests++; return {available: true, playing: true}; },
     ipcMain: ipc as unknown as IpcMain,
     isTrustedSender: (event) => event.sender === trustedSender,
     getSettings: () => snapshot,
@@ -126,6 +130,19 @@ test("settings IPC validates sender/input and exposes only fixed data/about acti
   const openStartupApps = ipc.handlers.get(SETTINGS_CHANNELS.openStartupApps)!;
   const openGitHub = ipc.handlers.get(SETTINGS_CHANNELS.openGitHub)!;
   const keyboardCapture = ipc.handlers.get(SETTINGS_CHANNELS.keyboardCaptureMode)!;
+  const chooseMusic = ipc.handlers.get(SETTINGS_CHANNELS.chooseMusicPlayer)!;
+  const testMusic = ipc.handlers.get(SETTINGS_CHANNELS.testMusicPlayer)!;
+
+  assert.equal((await chooseMusic({sender: {} }) as {ok: boolean}).ok, false);
+  assert.equal((await chooseMusic({sender: trustedSender}, {path: "C:\\Unsafe.exe"}) as {ok: boolean}).ok, false);
+  assert.equal((await testMusic({sender: trustedSender}, {command: "arbitrary"}) as {ok: boolean}).ok, false);
+  assert.equal((await update({sender: trustedSender}, {musicBinding: {path: "C:\\Unsafe.exe"}}) as {ok: boolean}).ok, false);
+  assert.equal(musicSelections, 0);
+  assert.equal(musicRequests, 0);
+  assert.deepEqual(await chooseMusic({sender: trustedSender}), {ok: true, data: snapshot});
+  assert.deepEqual(await testMusic({sender: trustedSender}), {ok: true, data: {available: true, playing: true}});
+  assert.equal(musicSelections, 1);
+  assert.equal(musicRequests, 1);
 
   assert.deepEqual(await get({ sender: trustedSender }), { ok: true, data: snapshot });
   assert.deepEqual(await update({ sender: trustedSender }, { petSize: "small" }), {

@@ -6,7 +6,7 @@ type TaskType = "daily" | "one_time";
 type CompletionMode = "manual" | "duration" | "process_start" | "process_exit";
 type OccurrenceStatus = "pending" | "active" | "completed";
 type ProcessMatchMode = "exact_path" | "process_name";
-type PanelView = "today" | "history" | "stats";
+type PanelView = "today" | "history" | "stats" | "archived";
 type PanelCommand = "open-add-task";
 type TimeStatsPeriod = "today" | "week";
 
@@ -17,6 +17,7 @@ interface Task {
   taskType: TaskType;
   completionMode: CompletionMode;
   targetDurationSec: number;
+  continueTimingAfterCompletion: boolean;
   archivedAt: string | null;
 }
 
@@ -40,6 +41,7 @@ interface HistoryEntry extends TaskListItem {
 
 interface HistoryDay {
   date: string;
+  totalSec: number;
   entries: HistoryEntry[];
 }
 
@@ -85,6 +87,9 @@ type ApiResult<T> =
   | { ok: false; error: { code: string; message: string } };
 
 interface TaskBridge {
+  archived(): Promise<ApiResult<Array<{task: Task; accumulatedSec: number}>>>;
+  restore(id: string): Promise<ApiResult<Task>>;
+  delete(id: string): Promise<ApiResult<boolean>>;
   listToday(): Promise<ApiResult<TaskListItem[]>>;
   history(query: { fromDate: string; toDate: string }): Promise<ApiResult<HistoryDay[]>>;
   timeStats(period: TimeStatsPeriod): Promise<ApiResult<TimeStatsSnapshot>>;
@@ -94,12 +99,14 @@ interface TaskBridge {
     taskType: TaskType;
     completionMode: "manual" | "duration" | "process_start";
     targetDurationSec: number;
+    continueTimingAfterCompletion: boolean;
   }): Promise<ApiResult<Task>>;
   update(id: string, patch: {
     title: string;
     description: string | null;
     completionMode: "manual" | "duration" | "process_start";
     targetDurationSec: number;
+    continueTimingAfterCompletion: boolean;
   }): Promise<ApiResult<Task>>;
   archive(id: string): Promise<ApiResult<Task>>;
   complete(occurrenceId: string): Promise<ApiResult<unknown>>;
@@ -212,6 +219,15 @@ const taskTypeHint = elementById<HTMLElement>("taskTypeHint");
 const completionMode = elementById<HTMLSelectElement>("completionMode");
 const durationField = elementById<HTMLElement>("durationField");
 const targetMinutes = elementById<HTMLInputElement>("targetMinutes");
+const continueTiming = elementById<HTMLInputElement>("continueTiming");
+const continueTimingHint = elementById<HTMLElement>("continueTimingHint");
+const archivedView = elementById<HTMLElement>("archivedView");
+const archivedList = elementById<HTMLElement>("archivedList");
+const taskContextMenu = elementById<HTMLElement>("taskContextMenu");
+const confirmTaskDialog = elementById<HTMLDialogElement>("confirmTaskDialog");
+let confirmationResolver: ((confirmed: boolean) => void) | null = null;
+let mutationBusy = false;
+let menuTrigger: HTMLElement | null = null;
 const archiveTaskButton = elementById<HTMLButtonElement>("archiveTaskButton");
 const programSummary = elementById<HTMLParagraphElement>("programSummary");
 const clearProgramButton = elementById<HTMLButtonElement>("clearProgramButton");
@@ -244,7 +260,8 @@ function taskMeta(item: TaskListItem): string {
   const runtime = runtimeByOccurrence.get(item.occurrence.id);
   const accumulatedSec = runtime?.accumulatedSec ?? item.occurrence.accumulatedSec;
   const pieces = [item.task.taskType === "daily" ? "每日" : "一次性"];
-  if (runtime?.active) pieces.push("执行中");
+  if (item.occurrence.status === "completed") pieces.push("已完成");
+  if (runtime?.active) pieces.push("计时中");
   if (item.task.completionMode === "duration") {
     pieces.push(`目标 ${formatDuration(item.task.targetDurationSec)}`);
   } else if (item.task.completionMode === "process_start") {
@@ -291,6 +308,7 @@ function renderToday(items: TaskListItem[]): void {
     const completed = item.occurrence.status === "completed";
     const isActive = runtimeByOccurrence.get(item.occurrence.id)?.active === true;
     const card = document.createElement("article");
+    card.dataset.taskId = item.task.id;
     card.className = completed
       ? "task-card completed"
       : isActive ? "task-card active" : "task-card";
@@ -323,6 +341,29 @@ function renderToday(items: TaskListItem[]): void {
     content.append(title, meta);
 
     card.append(checkbox, content);
+    const more = document.createElement("button");
+    more.type = "button";
+    more.className = "icon-button task-more";
+    more.textContent = "⋯";
+    more.setAttribute("aria-label", `${item.task.title}的更多操作`);
+    more.setAttribute("aria-haspopup", "menu");
+    more.addEventListener("click", event => {
+      event.stopPropagation();
+      const bounds = more.getBoundingClientRect();
+      openTaskMenu(item, bounds.left, bounds.bottom, more);
+    });
+    card.addEventListener("contextmenu", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      openTaskMenu(item, event.clientX, event.clientY, more);
+    });
+    card.addEventListener("keydown", event => {
+      if (event.shiftKey && event.key === "F10") {
+        event.preventDefault();
+        const bounds = card.getBoundingClientRect();
+        openTaskMenu(item, bounds.left + 16, bounds.top + 16, more);
+      }
+    });
     const rule = rulesByTask.get(item.task.id)?.[0];
     if (rule?.matchMode === "exact_path" && rule.executablePath) {
       const launch = document.createElement("button");
@@ -333,9 +374,22 @@ function renderToday(items: TaskListItem[]): void {
       launch.addEventListener("click", () => void launchBoundTask(item));
       card.append(launch);
     }
+    card.append(more);
     fragment.append(card);
   }
   todayList.replaceChildren(fragment);
+}
+
+function renderRuntimeProgress(): void {
+  // 每秒只更新文字和状态，保留键盘焦点及已打开菜单，避免反复销毁整张卡片。
+  for (const card of todayList.querySelectorAll<HTMLElement>(".task-card")) {
+    const item = todayItems.get(card.dataset.taskId ?? "");
+    if (!item) continue;
+    const meta = card.querySelector<HTMLElement>(".task-meta");
+    const text = taskMeta(item);
+    if (meta && meta.textContent !== text) meta.textContent = text;
+    card.classList.toggle("active", item.occurrence.status !== "completed" && runtimeByOccurrence.get(item.occurrence.id)?.active === true);
+  }
 }
 
 function renderHistory(days: HistoryDay[]): void {
@@ -355,8 +409,15 @@ function renderHistory(days: HistoryDay[]): void {
     section.className = "history-day";
     const date = document.createElement("h2");
     date.className = "history-date";
-    date.textContent = formatDate(day.date);
+    const dateText = document.createElement("span");
+    dateText.textContent = formatDate(day.date);
+    const totalTime = document.createElement("span");
+    totalTime.className = "history-day-total";
+    const sec = Math.max(0, Math.floor(day.totalSec));
+    totalTime.textContent = `当日累计 ${Math.floor(sec / 3600)}h${Math.floor(sec % 3600 / 60)}min${sec % 60}s`;
+    date.append(dateText, totalTime);
     section.append(date);
+    if (day.entries.length === 0) section.append(emptyState("当天有计时记录，暂无完成任务", "计时已包含当天实际运行的任务。"));
 
     for (const entry of day.entries) {
       const card = document.createElement("article");
@@ -471,7 +532,108 @@ async function refreshStats(): Promise<void> {
 async function refreshCurrentView(): Promise<void> {
   if (currentView === "today") await refreshToday();
   else if (currentView === "history") await refreshHistory();
-  else await refreshStats();
+  else if (currentView === "stats") await refreshStats();
+  else await refreshArchived();
+}
+
+async function refreshArchived(): Promise<void> {
+  const items = unwrap(await taskApi.archived());
+  todaySummary.textContent = `${items.length} 项已归档任务`;
+  archivedList.replaceChildren(...(items.length ? items.map(({task, accumulatedSec}) => {
+    const card = document.createElement("article");
+    card.className = "history-entry";
+    const title = document.createElement("strong");
+    title.textContent = task.title;
+    const meta = document.createElement("span");
+    meta.className = "task-meta";
+    meta.textContent = `${task.taskType === "daily" ? "每日" : "一次性"} · ${task.archivedAt ? new Date(task.archivedAt).toLocaleDateString("zh-CN") : ""} 归档 · 累计 ${formatDuration(accumulatedSec)}`;
+    const actions = document.createElement("div");
+    actions.className = "binding-actions";
+    const restore = document.createElement("button");
+    restore.className = "secondary-button";
+    restore.textContent = "恢复";
+    restore.addEventListener("click", () => void runTaskMutation(async () => { unwrap(await taskApi.restore(task.id)); }));
+    const remove = document.createElement("button");
+    remove.className = "text-button danger-text";
+    remove.textContent = "永久删除";
+    remove.addEventListener("click", () => void deleteTask(task));
+    actions.append(restore, remove);
+    card.append(title, meta, actions);
+    return card;
+  }) : [emptyState("还没有归档任务", "暂时不执行的任务可先归档，需要时再恢复。") ]));
+}
+
+function closeTaskMenu(restoreFocus = false): void {
+  taskContextMenu.hidden = true;
+  if (restoreFocus) menuTrigger?.focus();
+}
+
+function openTaskMenu(item: TaskListItem, x: number, y: number, trigger: HTMLElement): void {
+  if (mutationBusy) return;
+  menuTrigger = trigger;
+  const actions: Array<[string, () => void, boolean?]> = [
+    ["编辑任务", () => openTaskDialog(item)],
+    [item.occurrence.status === "completed" ? "重新打开" : "标记完成", () => void changeCompletion(item, item.occurrence.status !== "completed")],
+    ["归档任务", () => void archiveTask(item.task)],
+    ["永久删除任务", () => void deleteTask(item.task), true]
+  ];
+  taskContextMenu.replaceChildren(...actions.map(([label, action, danger]) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.setAttribute("role", "menuitem");
+    button.textContent = label;
+    if (danger) button.className = "danger-menu-item";
+    button.addEventListener("click", event => { event.stopPropagation(); closeTaskMenu(); action(); });
+    return button;
+  }));
+  taskContextMenu.hidden = false;
+  const bounds = taskContextMenu.getBoundingClientRect();
+  taskContextMenu.style.left = `${Math.max(8, Math.min(x, innerWidth - bounds.width - 8))}px`;
+  taskContextMenu.style.top = `${Math.max(8, Math.min(y, innerHeight - bounds.height - 8))}px`;
+  taskContextMenu.querySelector<HTMLButtonElement>("button")?.focus();
+}
+
+function confirmTask(title: string, detail: string, action: string): Promise<boolean> {
+  if (confirmationResolver) return Promise.resolve(false);
+  elementById("confirmTaskTitle").textContent = title;
+  elementById("confirmTaskDetail").textContent = detail;
+  elementById("acceptConfirmButton").textContent = action;
+  confirmTaskDialog.showModal();
+  elementById("cancelConfirmButton").focus();
+  return new Promise(resolve => { confirmationResolver = resolve; });
+}
+
+function finishTaskConfirmation(confirmed: boolean): void {
+  const resolve = confirmationResolver;
+  confirmationResolver = null;
+  if (confirmTaskDialog.open) confirmTaskDialog.close();
+  resolve?.(confirmed);
+}
+
+async function runTaskMutation(action: () => Promise<void>): Promise<void> {
+  if (mutationBusy) return;
+  mutationBusy = true;
+  todayList.inert = true;
+  archivedList.inert = true;
+  document.querySelector(".app-shell")?.setAttribute("aria-busy", "true");
+  try { await action(); await refreshCurrentView(); }
+  catch (error) { setStatus(error instanceof Error ? error.message : "任务操作失败"); }
+  finally {
+    mutationBusy = false;
+    todayList.inert = false;
+    archivedList.inert = false;
+    document.querySelector(".app-shell")?.removeAttribute("aria-busy");
+  }
+}
+
+async function archiveTask(task: Task): Promise<void> {
+  if (!await confirmTask("归档任务？", `归档“${task.title}”后，任务将从当前列表隐藏并停止自动监控。已完成记录和计时数据会保留，你可以在“已归档任务”中恢复。`, "归档")) return;
+  await runTaskMutation(async () => { unwrap(await taskApi.archive(task.id)); closeTaskDialog(); });
+}
+
+async function deleteTask(task: Task): Promise<void> {
+  if (!await confirmTask(`永久删除“${task.title}”？`, "该任务、全部执行记录、程序绑定及关联计时会话都将被删除；历史与总计时可能变化。此操作无法撤销。建议提前导出备份。", "永久删除")) return;
+  await runTaskMutation(async () => { unwrap(await taskApi.delete(task.id)); });
 }
 
 function clearStatsRefreshTimer(): void {
@@ -487,8 +649,8 @@ async function changeCompletion(item: TaskListItem, complete: boolean): Promise<
     else unwrap(await taskApi.reopen(item.occurrence.id));
     await refreshToday();
   } catch (error) {
-    setStatus(error instanceof Error ? error.message : "无法修改任务状态");
     await refreshToday().catch(() => undefined);
+    setStatus(error instanceof Error ? error.message : "无法修改任务状态");
   }
 }
 
@@ -512,6 +674,11 @@ function syncDurationField(): void {
 
 function syncProgramBinding(): void {
   const hasProgram = selectedProgram !== null;
+  continueTiming.disabled = !hasProgram;
+  if (!hasProgram) continueTiming.checked = false;
+  continueTimingHint.textContent = hasProgram
+    ? "达到完成条件后继续累计实际使用时长；关闭程序后暂停，下次启动继续。"
+    : "先绑定程序，再开启此选项。";
   clearProgramButton.classList.toggle("hidden", !hasProgram);
   matchModeField.classList.toggle("hidden", !hasProgram);
   if (!selectedProgram) {
@@ -619,6 +786,7 @@ function openTaskDialog(item?: TaskListItem): void {
   targetMinutes.value = item?.task.targetDurationSec
     ? String(Math.max(1, Math.ceil(item.task.targetDurationSec / 60)))
     : "25";
+  continueTiming.checked = item?.task.continueTimingAfterCompletion ?? false;
   archiveTaskButton.classList.toggle("hidden", !isEdit);
 
   const rule = item ? rulesByTask.get(item.task.id)?.[0] : undefined;
@@ -676,7 +844,8 @@ async function saveTask(event: SubmitEvent): Promise<void> {
     title: taskTitle.value,
     description: taskDescription.value.trim() || null,
     completionMode: mode,
-    targetDurationSec: minutes * 60
+    targetDurationSec: minutes * 60,
+    continueTimingAfterCompletion: selectedProgram !== null && continueTiming.checked
   };
 
   try {
@@ -704,25 +873,20 @@ async function archiveEditingTask(): Promise<void> {
   const id = editingTaskId.value;
   const item = todayItems.get(id);
   if (!id || !item) return;
-  if (!window.confirm(`归档“${item.task.title}”？历史完成记录会继续保留。`)) return;
-
-  try {
-    unwrap(await taskApi.archive(id));
-    closeTaskDialog();
-    await refreshToday();
-  } catch (error) {
-    setStatus(error instanceof Error ? error.message : "无法归档任务");
-  }
+  await archiveTask(item.task);
 }
 
 async function switchView(view: PanelView): Promise<void> {
+  closeTaskMenu();
+  clearStatsRefreshTimer();
   currentView = view;
   pageTitle.textContent = view === "today"
     ? "今日任务"
-    : view === "history" ? "完成历史" : "总计时";
+    : view === "history" ? "完成历史" : view === "archived" ? "已归档任务" : "总计时";
   todayView.classList.toggle("hidden", view !== "today");
   historyView.classList.toggle("hidden", view !== "history");
   statsView.classList.toggle("hidden", view !== "stats");
+  archivedView.classList.toggle("hidden", view !== "archived");
   addTaskButton.classList.toggle("hidden", view !== "today");
   for (const tab of document.querySelectorAll<HTMLButtonElement>(".tab")) {
     const active = tab.dataset.view === view;
@@ -746,6 +910,28 @@ async function handlePanelCommand(command: PanelCommand): Promise<void> {
 // ---------- 用户事件、Main 推送订阅与初始化 ----------
 
 addTaskButton.addEventListener("click", () => openTaskDialog());
+elementById("showArchivedButton").addEventListener("click", () => void switchView("archived"));
+elementById("backToTasksButton").addEventListener("click", () => void switchView("today"));
+elementById("cancelConfirmButton").addEventListener("click", () => finishTaskConfirmation(false));
+elementById("acceptConfirmButton").addEventListener("click", () => finishTaskConfirmation(true));
+confirmTaskDialog.addEventListener("close", () => {
+  // Esc/原生关闭同样视为取消；旧 close 事件不能影响已重新打开的对话框。
+  if (!confirmTaskDialog.open) finishTaskConfirmation(false);
+});
+document.addEventListener("pointerdown", event => { if (!taskContextMenu.contains(event.target as Node)) closeTaskMenu(); });
+window.addEventListener("blur", () => closeTaskMenu());
+window.addEventListener("resize", () => closeTaskMenu());
+document.addEventListener("keydown", event => {
+  if (taskContextMenu.hidden) return;
+  if (event.key === "Escape") { event.preventDefault(); closeTaskMenu(true); }
+  const buttons = [...taskContextMenu.querySelectorAll<HTMLButtonElement>("button")];
+  const index = buttons.indexOf(document.activeElement as HTMLButtonElement);
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    buttons[(index + (event.key === "ArrowDown" ? 1 : -1) + buttons.length) % buttons.length]?.focus();
+  }
+  if (event.key === "Tab") closeTaskMenu();
+});
 completionMode.addEventListener("change", syncDurationField);
 taskForm.addEventListener("submit", (event) => void saveTask(event));
 elementById<HTMLButtonElement>("cancelTaskButton").addEventListener("click", closeTaskDialog);
@@ -794,13 +980,13 @@ const unsubscribeRuntime = runtimeApi.onChanged((snapshots) => {
     snapshots.map((snapshot) => [snapshot.occurrenceId, snapshot])
   );
   if (document.hidden) return;
-  if (currentView === "today") renderToday([...todayItems.values()]);
-  if (currentView === "stats" && statsRefreshTimer === null) {
+  if (currentView === "today") renderRuntimeProgress();
+  if ((currentView === "stats" || currentView === "history") && snapshots.length > 0 && statsRefreshTimer === null) {
     // 活动任务存在时最多每 4 秒读取一次统计；不会增加 SQLite 写入频率。
     statsRefreshTimer = window.setTimeout(() => {
       statsRefreshTimer = null;
-      if (currentView === "stats" && !document.hidden) {
-        void refreshStats().catch((error: unknown) => {
+      if ((currentView === "stats" || currentView === "history") && !document.hidden) {
+        void refreshCurrentView().catch((error: unknown) => {
           setStatus(error instanceof Error ? error.message : "无法刷新总计时");
         });
       }

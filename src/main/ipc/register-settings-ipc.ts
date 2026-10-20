@@ -18,6 +18,8 @@ import type { TaskApiResult } from "../../shared/task-types";
 import { SETTINGS_CHANNELS } from "./settings-channels";
 
 export interface RegisterSettingsIpcOptions {
+  chooseMusicPlayer?: () => Promise<AppSettingsSnapshot>;
+  testMusicPlayer?: () => Promise<import("../services/music-service").MusicResult>;
   ipcMain: IpcMain;
   isTrustedSender: (event: IpcMainInvokeEvent) => boolean;
   getSettings: () => AppSettingsSnapshot;
@@ -78,6 +80,14 @@ export function registerSettingsIpc(options: RegisterSettingsIpcOptions): () => 
   }
 
   handle(SETTINGS_CHANNELS.get, EmptyTaskInputSchema, options.getSettings);
+  handle(SETTINGS_CHANNELS.chooseMusicPlayer, EmptyTaskInputSchema, () => {
+    if (!options.chooseMusicPlayer) throw new Error("音乐绑定不可用");
+    return options.chooseMusicPlayer();
+  });
+  handle(SETTINGS_CHANNELS.testMusicPlayer, EmptyTaskInputSchema, () => {
+    if (!options.testMusicPlayer) throw new Error("音乐测试不可用");
+    return options.testMusicPlayer();
+  });
   handle(SETTINGS_CHANNELS.update, UpdateAppSettingsInputSchema, options.updateSettings);
   handle(SETTINGS_CHANNELS.importPetZip, EmptyTaskInputSchema, options.importPetZip);
   handle(

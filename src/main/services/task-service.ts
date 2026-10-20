@@ -5,6 +5,7 @@
 import { randomUUID } from "node:crypto";
 import type { TaskDatabase } from "../db/database";
 import { TaskRepository } from "../db/task-repository";
+import { TimeStatsService } from "./time-stats-service";
 import {
   CreateTaskInputSchema,
   HistoryQuerySchema,
@@ -47,7 +48,7 @@ export class TaskService {
   private readonly clock: TaskClock;
   private readonly idFactory: () => string;
 
-  constructor(database: TaskDatabase, options: TaskServiceOptions = {}) {
+  constructor(private readonly database: TaskDatabase, options: TaskServiceOptions = {}) {
     this.repository = new TaskRepository(database);
     this.clock = options.clock ?? { now: () => new Date() };
     this.idFactory = options.idFactory ?? randomUUID;
@@ -71,6 +72,7 @@ export class TaskService {
           : null,
         completionMode: parsed.completionMode,
         targetDurationSec: parsed.targetDurationSec,
+        continueTimingAfterCompletion: parsed.continueTimingAfterCompletion,
         enabled: true,
         archivedAt: null,
         createdAt: timestamp,
@@ -124,6 +126,7 @@ export class TaskService {
         : parsed.patch.description,
       completionMode: nextCompletionMode,
       targetDurationSec: nextTargetDuration,
+      continueTimingAfterCompletion: parsed.patch.continueTimingAfterCompletion ?? task.continueTimingAfterCompletion,
       sortOrder: parsed.patch.sortOrder ?? task.sortOrder,
       updatedAt: this.clock.now().toISOString()
     });
@@ -133,6 +136,30 @@ export class TaskService {
     const task = this.requireTask(id);
     if (task.archivedAt) return task;
     return this.repository.archiveTask(id, this.clock.now().toISOString());
+  }
+
+  getArchivedTasks() {
+    return this.repository.listArchivedTasks();
+  }
+
+  restoreTask(id: string): Task {
+    this.requireTask(id);
+    return this.repository.restoreTask(id, this.clock.now().toISOString());
+  }
+
+  deleteTask(id: string): boolean {
+    return this.repository.deleteTask(id);
+  }
+
+  getOccurrence(id: string): TaskListItem {
+    return this.requireOccurrence(id);
+  }
+
+  getRuntimeCandidates(): TaskListItem[] {
+    const today = toLocalDateKey(this.clock.now());
+    this.ensureTodayOccurrences(today);
+    return this.repository.listTodayCandidates(today).filter(item =>
+      item.occurrence.status !== "completed" || item.task.continueTimingAfterCompletion);
   }
 
   ensureTodayOccurrences(date = toLocalDateKey(this.clock.now())): number {
@@ -171,14 +198,19 @@ export class TaskService {
     return this.repository.listTodayCandidates(today).filter((item) => {
       if (item.task.taskType === "daily") return true;
       if (item.occurrence.status !== "completed") return true;
+      // 选择持续计时的一次性任务仍需可编辑、停用；不会产生第二个实例。
+      if (item.task.continueTimingAfterCompletion) return true;
       return item.occurrence.completedAt !== null
         && localDateKeyFromIso(item.occurrence.completedAt) === today;
     });
   }
 
-  getHistory(query: HistoryQuery): HistoryDay[] {
+  getHistory(query: HistoryQuery, dailyTotals?: Map<string, number>): HistoryDay[] {
     const parsed = HistoryQuerySchema.parse(query);
     const groups = new Map<string, HistoryEntry[]>();
+    const totals = dailyTotals ?? new TimeStatsService(this.database, { activeIntervals: () => [] }, { clock: this.clock })
+      .dailyTotals(parsed.fromDate, parsed.toDate);
+    for (const date of totals.keys()) groups.set(date, []);
 
     for (const item of this.repository.listCompletedItems()) {
       if (!item.occurrence.completedAt) continue;
@@ -195,7 +227,7 @@ export class TaskService {
 
     return [...groups.entries()]
       .sort(([left], [right]) => right.localeCompare(left))
-      .map(([date, entries]) => ({ date, entries }));
+      .map(([date, entries]) => ({ date, totalSec: totals.get(date) ?? 0, entries }));
   }
 
   completeOccurrence(occurrenceId: string): OccurrenceMutationResult {

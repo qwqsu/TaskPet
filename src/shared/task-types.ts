@@ -21,6 +21,7 @@ export interface Task {
   recurrenceRule: string | null;
   completionMode: TaskCompletionMode;
   targetDurationSec: number;
+  continueTimingAfterCompletion: boolean;
   enabled: boolean;
   archivedAt: string | null;
   createdAt: string;
@@ -52,7 +53,13 @@ export interface HistoryEntry extends TaskListItem {
 
 export interface HistoryDay {
   date: string;
+  totalSec: number;
   entries: HistoryEntry[];
+}
+
+export interface ArchivedTask {
+  task: Task;
+  accumulatedSec: number;
 }
 
 export type TimeStatsPeriod = "today" | "week";

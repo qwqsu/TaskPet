@@ -14,7 +14,7 @@ const names: Record<string,string> = {
   "open-panel":"任务面板","quick-add":"添加任务","open-settings":"设置","toggle-monitoring":"暂停 / 恢复监控",
   "toggle-pet":"显示 / 隐藏桌宠","toggle-ignore-mouse":"忽略鼠标事件","toggle-always-on-top":"始终置顶",
   "pet-opacity":"桌宠透明度","pet-scale":"桌宠大小","radial-opacity":"轮盘透明度","radial-scale":"轮盘大小",
-  music:"QQ 音乐",quit:"退出 TaskPet",more:"更多操作"
+  music:"音乐",quit:"退出 TaskPet",more:"更多操作"
 };
 const paths: Record<string,string> = {
   "open-panel":"M5 4h14v16H5z M8 8h8 M8 12h8 M8 16h5",
@@ -41,6 +41,7 @@ let feedbackTimer: number | undefined;
 let closeTimer: number | undefined;
 let music: Music = {available:false};
 let musicBusy = false;
+let musicRequest: Promise<Music> | null = null;
 let musicEpoch = 0;
 let pending: Update | null = null;
 let writing = false;
@@ -133,9 +134,10 @@ function paintMusic():void {
   const focusedCommand=(document.activeElement as HTMLElement | null)?.dataset.command;
   panel.replaceChildren();
   const controls=document.createElement("div"); controls.className="music-controls";
-  for(const [command,label,glyph] of [["previous","上一首","previous"],["toggle","暂停","pause"],["next","下一首","next"]] as const){
+  const toggleLabel = music.playing === false ? "播放" : music.playing === true ? "暂停" : "播放/暂停";
+  for(const [command,label,glyph] of [["previous","上一首","previous"],["toggle",toggleLabel,music.playing === false ? "play" : "pause"],["next","下一首","next"]] as const){
     const button=document.createElement("button");button.className="music-button";button.setAttribute("aria-label",label);button.dataset.command=command;
-    button.setAttribute("aria-disabled",String(!music.available || musicBusy));button.append(icon(glyph));
+    button.setAttribute("aria-disabled",String(!music.available || musicBusy));button.disabled=!music.available || musicBusy;button.append(icon(glyph));
     const caption=document.createElement("span");caption.textContent=label;button.append(caption);
     button.onclick=()=>{if(music.available && !musicBusy)void runMusic(command);};controls.append(button);
   }
@@ -146,9 +148,14 @@ function paintMusic():void {
 async function runMusic(command:"status"|"previous"|"toggle"|"next"):Promise<void>{
   if(musicBusy)return;
   const epoch=musicEpoch;musicBusy=true;paintMusic();
-  const result=await api.music(command);musicBusy=false;
+  musicRequest=api.music(command);
+  const result=await musicRequest;musicBusy=false;musicRequest=null;
   if(epoch!==musicEpoch){if(panelId==="music")void runMusic("status");return;}
   music=result;paintMusic();
+  if(result.error) {
+    tell(result.error,true);
+    if(result.needsBinding){const entry=feedback.querySelector("button");if(entry){entry.textContent="编辑音乐入口";entry.onclick=()=>{void api.action("open-music-settings");};}}
+  } else if(result.message) tell(result.message);
   const button=buttons().find(b=>b.dataset.action==="music");button?.classList.toggle("unavailable",!music.available);
 }
 function musicPanel(button:HTMLButtonElement):void{
@@ -160,7 +167,8 @@ async function execute(button:HTMLButtonElement):Promise<void>{
   const id=button.dataset.action!;
   
   if(id==="more"){closePanel(false);page++;signature="";render(state!);buttons()[0]?.focus();return;}
-  if(id==="music"){musicPanel(button);return;}
+  // 左键启动不等待媒体会话查询：与应用入口相同，即使播放器不支持媒体控制也能打开。
+  if(id==="music")window.clearTimeout(hoverTimer);
   if(["pet-opacity","pet-scale","radial-opacity","radial-scale"].includes(id)){sliderPanel(id,button);return;}
   closePanel(false);
   if(button.getAttribute("aria-busy")==="true")return;
@@ -183,16 +191,16 @@ function render(next:State):void{
     closePanel(false);signature=nextSignature;items.replaceChildren();
     visible.forEach((item,index)=>{
       const button=document.createElement("button");button.type="button";button.className="menu-action";button.dataset.action=item.id;
-      button.setAttribute("aria-label",names[item.id] ?? item.name ?? "应用");
+      button.setAttribute("aria-label",item.id==="music" ? item.name ?? "音乐" : names[item.id] ?? item.name ?? "应用");
       const label=document.createElement("span");label.className="menu-label";label.textContent=button.getAttribute("aria-label");
       button.append(icon(item.id),label);button.onclick=()=>{void execute(button);};
-      if(item.id.startsWith("app-"))void api.appIcon(item.id).then(data=>{
+      if(item.id.startsWith("app-") || (item.id==="music" && item.path))void api.appIcon(item.id).then(data=>{
         if(!data||!button.isConnected)return;
         const image=document.createElement("img");image.src=data;image.alt="";image.width=26;image.height=26;
         button.replaceChildren(image,label);
       }).catch(()=>{});
-      button.onmouseenter=()=>{if(item.id==="music"){window.clearTimeout(leaveTimer);hoverTimer=window.setTimeout(()=>musicPanel(button),150);}};
-      button.onfocus=()=>{if(item.id==="music"&&!restoringFocus)musicPanel(button);};
+      button.oncontextmenu=event=>{if(item.id==="music"){event.preventDefault();event.stopPropagation();musicPanel(button);}};
+      button.onmouseenter=()=>{if(item.id==="music"){window.clearTimeout(leaveTimer);hoverTimer=window.setTimeout(()=>musicPanel(button),250);}};
       button.onmouseleave=()=>{window.clearTimeout(hoverTimer);if(item.id==="music")leaveTimer=window.setTimeout(()=>{if(panelId==="music"&&!panel.matches(":hover")&&!panel.contains(document.activeElement))closePanel(false);},350);};
       items.append(button);
     });

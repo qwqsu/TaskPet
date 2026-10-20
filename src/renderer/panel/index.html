@@ -11,6 +11,8 @@
     <title>TaskPet 任务</title>
     <link rel="icon" type="image/png" href="../../assets/logo.png" />
     <link rel="stylesheet" href="./panel.css" />
+    <link rel="stylesheet" href="../themes.css" />
+    <script src="../theme.js"></script>
   </head>
   <body>
     <main class="app-shell">
@@ -21,7 +23,10 @@
           <h1 id="pageTitle">今日任务</h1>
           <p id="todaySummary" class="summary">正在读取本地任务…</p>
         </div>
-        <button id="addTaskButton" class="primary-button" type="button">＋ 添加</button>
+        <div class="header-actions">
+          <button id="showArchivedButton" class="secondary-button" type="button" aria-label="更多：已归档任务">⋯ 已归档</button>
+          <button id="addTaskButton" class="primary-button" type="button">＋ 添加</button>
+        </div>
       </header>
 
       <!-- 任务、历史和实际运行总计时。设置已拆分为独立窗口。 -->
@@ -40,6 +45,12 @@
 
       <section id="historyView" class="view hidden" aria-label="最近 30 天历史">
         <div id="historyList" class="history-list"></div>
+      </section>
+
+      <section id="archivedView" class="view hidden" aria-label="已归档任务">
+        <button id="backToTasksButton" class="text-button" type="button">← 返回今日任务</button>
+        <p class="field-hint">归档会隐藏任务并停止监控，保留历史和计时；恢复后从当天继续。</p>
+        <div id="archivedList" class="task-list"></div>
       </section>
 
       <section id="statsView" class="view hidden" aria-label="任务总计时">
@@ -105,6 +116,12 @@
           <small>绑定程序运行期间累计；关闭后暂停，下次启动继续。</small>
         </label>
 
+        <!-- 层级：任务标题优先，续计时是次要配置；说明使用辅助色和 8/16px 间距。 -->
+        <label class="continue-timing-field">
+          <input id="continueTiming" type="checkbox" />
+          <span>完成任务后继续计时<small id="continueTimingHint">先绑定程序，再开启此选项。</small></span>
+        </label>
+
         <!-- 程序绑定可选择当前快照或由系统文件选择器选择 exe。 -->
         <section class="program-binding" aria-labelledby="programBindingTitle">
           <div class="binding-heading">
@@ -143,12 +160,22 @@
         </section>
 
         <div class="dialog-actions">
-          <button id="archiveTaskButton" class="danger-button hidden" type="button">归档</button>
+          <button id="archiveTaskButton" class="secondary-button hidden" type="button" title="停用并隐藏任务，保留历史和计时，可在已归档任务中恢复">归档</button>
           <span class="action-spacer"></span>
           <button id="dismissTaskButton" class="secondary-button" type="button">取消</button>
           <button class="primary-button" type="submit">保存</button>
         </div>
       </form>
+    </dialog>
+
+    <div id="taskContextMenu" class="task-context-menu" role="menu" aria-label="任务操作" hidden></div>
+    <dialog id="confirmTaskDialog" class="task-dialog confirm-dialog" aria-labelledby="confirmTaskTitle" aria-describedby="confirmTaskDetail">
+      <h2 id="confirmTaskTitle"></h2>
+      <p id="confirmTaskDetail"></p>
+      <div class="dialog-actions">
+        <button id="cancelConfirmButton" class="secondary-button" type="button" autofocus>取消</button>
+        <button id="acceptConfirmButton" class="danger-button" type="button">确认</button>
+      </div>
     </dialog>
 
     <script src="../../../build/renderer/panel/panel.js"></script>

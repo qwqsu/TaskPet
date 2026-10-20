@@ -38,6 +38,8 @@ interface KeyboardMappingSettings {
 }
 
 interface AppSettingsSnapshot {
+  appearance?: import("../../shared/appearance").AppearanceSettings;
+  musicBinding?: import("../../shared/music-settings").MusicBinding | null;
   autoStart: {
     supported: boolean;
     registered: boolean;
@@ -86,6 +88,7 @@ interface SettingsBridge {
   radialAppIcon(id: string): Promise<string | null>;
   get(): Promise<ApiResult<AppSettingsSnapshot>>;
   update(input: {
+    appearance?: import("../../shared/appearance").AppearanceSettings;
     autoStart?: boolean;
     petSize?: PetSize;
     petScale?: number;
@@ -358,6 +361,7 @@ function renderKeyboardMappings(snapshot: AppSettingsSnapshot): void {
 
 function render(snapshot: AppSettingsSnapshot): void {
   currentSettings = snapshot;
+  renderAppearance(snapshot);
   autoStartToggle.checked = snapshot.autoStart.registered;
   autoStartToggle.disabled = !snapshot.autoStart.supported;
   autoStartHint.classList.toggle("warning", snapshot.autoStart.blockedByWindows);
@@ -420,6 +424,45 @@ function currentBindings(): PetMouseBindings {
   };
 }
 
+const themeNames: Record<string, string> = {
+  "classic-warm": "经典暖杏", "midnight-blue": "深夜墨蓝", cream: "奶油白", forest: "森林青绿", sakura: "樱花粉"
+};
+const themeChoices = elementById("themeChoices");
+for (const [themeId, name] of Object.entries(themeNames)) {
+  const choice = document.createElement("button");
+  choice.className = "theme-choice";
+  choice.type = "button";
+  choice.dataset.skin = themeId;
+  choice.setAttribute("aria-pressed", "false");
+  const swatch = document.createElement("span");
+  swatch.className = "theme-swatch";
+  swatch.setAttribute("aria-hidden", "true");
+  swatch.append(document.createElement("i"), document.createElement("i"));
+  const label = document.createElement("strong");
+  label.textContent = name;
+  choice.append(swatch, label);
+  choice.addEventListener("click", () => void updateSetting({appearance: {
+    themeMode: "manual", themeId: themeId as import("../../shared/appearance").AppearanceSettings["themeId"]
+  }}));
+  themeChoices.append(choice);
+}
+function renderAppearance(snapshot: AppSettingsSnapshot): void {
+  const appearance = snapshot.appearance ?? {themeMode: "manual", themeId: "classic-warm"};
+  const effective = appearance.themeMode === "system" ? document.documentElement.dataset.theme : appearance.themeId;
+  elementById("currentThemeName").textContent = `${themeNames[effective ?? "classic-warm"] ?? themeNames["classic-warm"]}${appearance.themeMode === "system" ? " · 跟随系统" : ""}`;
+  elementById<HTMLInputElement>("systemThemeToggle").checked = appearance.themeMode === "system";
+  for (const choice of themeChoices.querySelectorAll<HTMLButtonElement>("button")) {
+    choice.setAttribute("aria-pressed", String(choice.dataset.skin === effective));
+  }
+}
+elementById("resetThemeButton").addEventListener("click", () => void updateSetting({appearance: {themeMode: "manual", themeId: "classic-warm"}}));
+elementById<HTMLInputElement>("systemThemeToggle").addEventListener("change", event => void updateSetting({appearance: {
+  themeMode: (event.target as HTMLInputElement).checked ? "system" : "manual",
+  themeId: currentSettings?.appearance?.themeId ?? "classic-warm"
+}}));
+// 系统外观变化只更新预览选中状态，不触发保存或新的轮询。
+new MutationObserver(() => { if (currentSettings) renderAppearance(currentSettings); })
+  .observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
 for (const select of [leftClickAction, doubleClickAction, rightClickAction]) {
   fillActionSelect(select);
   select.addEventListener("change", () => {
@@ -695,7 +738,7 @@ const RADIAL_BUILTINS: ReadonlyArray<readonly [string, string, string, string]> 
   ["pet-scale", "桌宠大小", "↔", "调节项"],
   ["radial-opacity", "轮盘透明度", "◑", "调节项"],
   ["radial-scale", "轮盘大小", "⤢", "调节项"],
-  ["music", "QQ 音乐", "♪", "音乐控制"],
+  ["music", "音乐", "♪", "音乐控制"],
   ["quit", "退出 TaskPet", "⏻", "内置动作"]
 ];
 function defaultRadialSettings(): RadialSettings {
@@ -791,7 +834,8 @@ function renderRadial(settings: RadialSettings): void {
   radialList.replaceChildren();
   settings.items.forEach((item, index) => {
     const builtin = RADIAL_BUILTINS.find(([id]) => id === item.id);
-    const name = builtin?.[1] ?? item.name ?? "未命名应用";
+    const editable = !builtin || item.id === "music";
+    const name = item.id === "music" ? item.name ?? "音乐" : builtin?.[1] ?? item.name ?? "未命名应用";
     const row = document.createElement("li");
     row.className = "radial-item";
     row.dataset.id = item.id;
@@ -801,7 +845,7 @@ function renderRadial(settings: RadialSettings): void {
     icon.className = "radial-icon";
     icon.setAttribute("aria-hidden", "true");
     icon.textContent = builtin?.[2] ?? "▣";
-    if (!builtin) void settingsApi.radialAppIcon(item.id).then(data => {
+    if (editable && item.path) void settingsApi.radialAppIcon(item.id).then(data => {
       if (!data || !icon.isConnected) return;
       const image = document.createElement("img"); image.src = data; image.alt = ""; image.width = 24; image.height = 24;
       icon.replaceChildren(image);
@@ -813,7 +857,7 @@ function renderRadial(settings: RadialSettings): void {
     const detail = document.createElement("small");
     detail.textContent = `${index + 1} · ${builtin?.[3] ?? "应用入口"}${item.enabled ? "" : " · 已隐藏"}`;
     copy.append(title, detail);
-    if (!builtin) {
+    if (editable) {
       const path = document.createElement("small");
       path.className = "radial-path";
       path.textContent = item.path || "未设置路径，请编辑修复";
@@ -846,9 +890,11 @@ function renderRadial(settings: RadialSettings): void {
     }
     action("上移", "up", () => { void moveRadial(item.id, -1); }, index === 0);
     action("下移", "down", () => { void moveRadial(item.id, 1); }, index === settings.items.length - 1);
-    if (!builtin) {
+    if (editable) {
       action("编辑", "edit", () => openAppEditor(item));
-      action("测试启动", "test", () => { void testApp(item.id, name); });
+      action("测试启动", "test", () => { void testApp(item.id, name); }, !item.path);
+    }
+    if (!builtin) {
       action("删除", "delete", () => {
         if (!window.confirm(`删除应用入口“${name}”？不会删除程序文件。`)) return;
         void updateRadial((latest) => ({ ...latest, items: latest.items.filter((entry) => entry.id !== item.id) })).then((saved) => {
@@ -907,10 +953,10 @@ elementById("restoreRadialDefaultsButton").addEventListener("click", () => {
 });
 function openAppEditor(item?: RadialItem): void {
   editingAppId = item?.id ?? null;
-  radialAppName.value = item?.name ?? "";
+  radialAppName.value = item?.name ?? (item?.id === "music" ? "音乐" : "");
   radialAppPath.value = item?.path ?? "";
   radialAppError.hidden = true;
-  elementById("radialAppDialogTitle").textContent = item ? "编辑应用" : "添加应用";
+  elementById("radialAppDialogTitle").textContent = item?.id === "music" ? "编辑音乐入口" : item ? "编辑应用" : "添加应用";
   radialAppDialog.showModal();
   radialAppName.focus();
 }

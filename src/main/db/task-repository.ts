@@ -21,6 +21,7 @@ interface TaskRow {
   recurrence_rule: string | null;
   completion_mode: TaskCompletionMode;
   target_duration_sec: number;
+  continue_timing_after_completion: number;
   enabled: number;
   archived_at: string | null;
   created_at: string;
@@ -60,6 +61,7 @@ export interface NewTaskRow {
   recurrenceRule: string | null;
   completionMode: TaskCompletionMode;
   targetDurationSec: number;
+  continueTimingAfterCompletion?: boolean;
   enabled: boolean;
   archivedAt: string | null;
   createdAt: string;
@@ -88,6 +90,7 @@ function toTask(row: TaskRow): Task {
     recurrenceRule: row.recurrence_rule,
     completionMode: row.completion_mode,
     targetDurationSec: row.target_duration_sec,
+    continueTimingAfterCompletion: row.continue_timing_after_completion === 1,
     enabled: row.enabled === 1,
     archivedAt: row.archived_at,
     createdAt: row.created_at,
@@ -137,6 +140,7 @@ const JOINED_TASK_SELECT = `
     t.recurrence_rule,
     t.completion_mode,
     t.target_duration_sec,
+    t.continue_timing_after_completion,
     t.enabled,
     t.archived_at,
     t.created_at,
@@ -166,14 +170,14 @@ export class TaskRepository {
     this.database.prepare(`
       INSERT INTO tasks (
         id, title, description, task_type, recurrence_rule,
-        completion_mode, target_duration_sec, enabled, archived_at,
+        completion_mode, target_duration_sec, continue_timing_after_completion, enabled, archived_at,
         created_at, updated_at, sort_order
       ) VALUES (
         @id, @title, @description, @taskType, @recurrenceRule,
-        @completionMode, @targetDurationSec, @enabled, @archivedAt,
+        @completionMode, @targetDurationSec, @continueTimingAfterCompletion, @enabled, @archivedAt,
         @createdAt, @updatedAt, @sortOrder
       )
-    `).run({ ...task, enabled: task.enabled ? 1 : 0 });
+    `).run({ ...task, continueTimingAfterCompletion: task.continueTimingAfterCompletion ? 1 : 0, enabled: task.enabled ? 1 : 0 });
 
     return this.requireTask(task.id);
   }
@@ -186,12 +190,13 @@ export class TaskRepository {
           recurrence_rule = @recurrenceRule,
           completion_mode = @completionMode,
           target_duration_sec = @targetDurationSec,
+          continue_timing_after_completion = @continueTimingAfterCompletion,
           enabled = @enabled,
           archived_at = @archivedAt,
           updated_at = @updatedAt,
           sort_order = @sortOrder
       WHERE id = @id
-    `).run({ ...task, enabled: task.enabled ? 1 : 0 });
+    `).run({ ...task, continueTimingAfterCompletion: task.continueTimingAfterCompletion ? 1 : 0, enabled: task.enabled ? 1 : 0 });
 
     return this.requireTask(task.id);
   }
@@ -210,6 +215,23 @@ export class TaskRepository {
   findTask(id: string): Task | null {
     const row = this.database.prepare("SELECT * FROM tasks WHERE id = ?").get(id) as TaskRow | undefined;
     return row ? toTask(row) : null;
+  }
+
+  restoreTask(id: string, timestamp: string): Task {
+    this.database.prepare(`UPDATE tasks SET enabled = 1, archived_at = NULL, updated_at = ? WHERE id = ?`)
+      .run(timestamp, id);
+    return this.requireTask(id);
+  }
+
+  deleteTask(id: string): boolean {
+    return this.transaction(() => this.database.prepare("DELETE FROM tasks WHERE id = ?").run(id).changes === 1);
+  }
+
+  listArchivedTasks(): Array<{ task: Task; accumulatedSec: number }> {
+    const rows = this.database.prepare(`SELECT t.*, COALESCE((SELECT SUM(o.accumulated_sec)
+      FROM task_occurrences o WHERE o.task_id = t.id), 0) AS total_sec
+      FROM tasks t WHERE t.archived_at IS NOT NULL ORDER BY t.archived_at DESC`).all() as Array<TaskRow & {total_sec: number}>;
+    return rows.map(row => ({task: toTask(row), accumulatedSec: row.total_sec}));
   }
 
   requireTask(id: string): Task {
@@ -284,7 +306,7 @@ export class TaskRepository {
       WHERE t.id = ?
         AND t.enabled = 1
         AND t.archived_at IS NULL
-        AND o.status <> 'completed'
+        AND (o.status <> 'completed' OR t.continue_timing_after_completion = 1)
         AND (
           (t.task_type = 'daily' AND o.occurrence_date = ?)
           OR t.task_type = 'one_time'
@@ -298,8 +320,9 @@ export class TaskRepository {
   markOccurrenceActive(occurrenceId: string, updatedAt: string): boolean {
     return this.database.prepare(`
       UPDATE task_occurrences
-      SET status = 'active', updated_at = ?
-      WHERE id = ? AND status <> 'completed'
+      SET status = CASE WHEN status = 'completed' THEN status ELSE 'active' END, updated_at = ?
+      WHERE id = ? AND (status <> 'completed' OR EXISTS (
+        SELECT 1 FROM tasks t WHERE t.id = task_occurrences.task_id AND t.continue_timing_after_completion = 1))
     `).run(updatedAt, occurrenceId).changes === 1;
   }
 
@@ -312,7 +335,7 @@ export class TaskRepository {
     return this.database.prepare(`
       UPDATE task_occurrences
       SET accumulated_sec = MAX(accumulated_sec, ?), updated_at = ?
-      WHERE id = ? AND status = 'active'
+      WHERE id = ?
     `).run(accumulatedSec, updatedAt, occurrenceId).changes === 1;
   }
 
@@ -323,10 +346,10 @@ export class TaskRepository {
   ): boolean {
     return this.database.prepare(`
       UPDATE task_occurrences
-      SET status = 'pending',
+      SET status = CASE WHEN status = 'completed' THEN status ELSE 'pending' END,
           accumulated_sec = MAX(accumulated_sec, ?),
           updated_at = ?
-      WHERE id = ? AND status = 'active'
+      WHERE id = ?
     `).run(accumulatedSec, updatedAt, occurrenceId).changes === 1;
   }
 

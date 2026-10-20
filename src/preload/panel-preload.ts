@@ -3,6 +3,18 @@
  * 把 tasks/processes/runtime 三组最小 API 暴露给 Renderer，设置使用独立 preload。
  */
 import { contextBridge, ipcRenderer } from "electron";
+// 主题是只读窗口能力；Main 负责持久化、系统外观解析和广播。
+contextBridge.exposeInMainWorld("taskPetTheme", Object.freeze({
+  get: (): Promise<string> => ipcRenderer.invoke("taskpet:appearance:get"),
+  onChanged: (callback: (theme: string) => void): (() => void) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event: Electron.IpcRendererEvent, theme: unknown): void => {
+      if (typeof theme === "string") callback(theme);
+    };
+    ipcRenderer.on("taskpet:appearance:changed", listener);
+    return () => ipcRenderer.removeListener("taskpet:appearance:changed", listener);
+  }
+}));
 import type {
   CreateTaskInput,
   HistoryQuery,
@@ -33,6 +45,9 @@ const TASK_CHANNELS = Object.freeze({
   create: "taskpet:tasks:create",
   update: "taskpet:tasks:update",
   archive: "taskpet:tasks:archive",
+  archived: "taskpet:tasks:archived",
+  restore: "taskpet:tasks:restore",
+  delete: "taskpet:tasks:delete",
   complete: "taskpet:tasks:complete",
   reopen: "taskpet:tasks:reopen",
   changed: "taskpet:tasks:changed",
@@ -79,6 +94,9 @@ function subscribePanelCommand(callback: (command: PanelCommand) => void): () =>
 }
 
 const taskApi = Object.freeze({
+  archived: (): Promise<TaskApiResult<import("../shared/task-types").ArchivedTask[]>> => ipcRenderer.invoke(TASK_CHANNELS.archived),
+  restore: (id: string): Promise<TaskApiResult<Task>> => ipcRenderer.invoke(TASK_CHANNELS.restore, { id }),
+  delete: (id: string): Promise<TaskApiResult<boolean>> => ipcRenderer.invoke(TASK_CHANNELS.delete, { id }),
   listToday: (): Promise<TaskApiResult<TaskListItem[]>> => (
     ipcRenderer.invoke(TASK_CHANNELS.listToday)
   ),

@@ -1,5 +1,7 @@
 /** 独立设置窗口的数据、备份和关于频道。 */
 export const SETTINGS_CHANNELS = Object.freeze({
+  chooseMusicPlayer: "taskpet:settings:choose-music-player",
+  testMusicPlayer: "taskpet:settings:test-music-player",
   get: "taskpet:settings:get",
   update: "taskpet:settings:update",
   importPetZip: "taskpet:settings:import-pet-zip",

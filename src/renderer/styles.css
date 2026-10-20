@@ -97,9 +97,9 @@ body {
   padding: var(--status-padding-y) var(--status-padding-x);
   border: 1px solid rgba(204, 120, 92, 0.65);
   border-radius: 12px;
-  color: #faf9f5;
+  color: var(--color-on-inverse);
   text-align: center;
-  background: rgba(24, 23, 21, 0.94);
+  background: var(--color-inverse);
   box-shadow: 0 4px 12px rgba(24, 23, 21, 0.16);
   backdrop-filter: blur(8px);
   opacity: 0;
@@ -122,7 +122,7 @@ body {
   display: block;
   width: 100%;
   overflow: hidden;
-  color: #faf9f5;
+  color: var(--color-on-inverse);
   font-size: var(--status-message-font-size);
   font-weight: 700;
   line-height: 1.15;
@@ -134,7 +134,7 @@ body {
   /* 独立计时行使用等宽数字，秒数跳动时文字不会左右抖动。 */
   display: none;
   margin-top: 2px;
-  color: #e6a48d;
+  color: var(--color-highlight);
   font-size: var(--status-detail-font-size);
   font-weight: 800;
   font-variant-numeric: tabular-nums;

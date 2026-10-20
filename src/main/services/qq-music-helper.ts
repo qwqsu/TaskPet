@@ -12,9 +12,28 @@ $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
 
+function Get-MusicExecutablePaths([string] $Name) {
+    foreach ($process in [System.Diagnostics.Process]::GetProcessesByName($Name)) {
+        try { [string] $process.MainModule.FileName }
+        catch { '' }
+        finally { $process.Dispose() }
+    }
+}
+
 function Test-QqMusicIdentity([string] $Identity) {
     $options = [System.Text.RegularExpressions.RegexOptions]::IgnoreCase -bor [System.Text.RegularExpressions.RegexOptions]::CultureInvariant
-    return [regex]::IsMatch($Identity, '${QQ_MUSIC_IDENTITY_PATTERN}', $options)
+    if (-not [regex]::IsMatch($Identity, '${QQ_MUSIC_IDENTITY_PATTERN}', $options)) { return $false }
+    # 新绑定的会话若只报告 EXE 名称，需要由当前进程的完整路径进一步佐证。
+    # 同名程序来自不同目录、路径不可读或没有进程时安全失败，不猜测目标。
+    if ($script:TaskPetTargetExecutable -and $Identity -notmatch '[\\/]') {
+        $name = [System.IO.Path]::GetFileNameWithoutExtension($script:TaskPetTargetExecutable)
+        $paths = @(Get-MusicExecutablePaths $name)
+        if ($paths.Count -eq 0) { return $false }
+        foreach ($path in $paths) {
+            if (-not [string]::Equals($path, $script:TaskPetTargetExecutable, [System.StringComparison]::OrdinalIgnoreCase)) { return $false }
+        }
+    }
+    return $true
 }
 
 function Wait-WinRt($Operation, [Type] $ResultType) {
@@ -36,11 +55,15 @@ function Invoke-QqMusicCommand($Sessions, [string] $Command) {
         return @{ available = $false; error = '检测到多个 QQ 音乐播放会话，无法确定要控制的播放器。' }
     }
     $session = $matches[0]
+    if ($Command -eq 'play' -and [string] $session.GetPlaybackInfo().PlaybackStatus -eq 'Playing') {
+        return @{ available = $true; playing = $true; acknowledged = $true }
+    }
     if ($Command -ne 'status') {
         $operation = switch ($Command) {
             'previous' { $session.TrySkipPreviousAsync(); break }
             'toggle' { $session.TryTogglePlayPauseAsync(); break }
             'next' { $session.TrySkipNextAsync(); break }
+            'play' { $session.TryPlayAsync(); break }
             default { throw '不支持此 QQ 音乐操作。' }
         }
         $acknowledged = Wait-WinRt $operation ([bool])
@@ -63,11 +86,18 @@ function Invoke-QqMusicCommand($Sessions, [string] $Command) {
 }
 `;
 
-export function createQqMusicHelperScript(command: string): string {
-  if (!["status", "previous", "toggle", "next"].includes(command)) {
+export function createMusicHelperFunctions(identityPattern = QQ_MUSIC_IDENTITY_PATTERN, executablePath?: string): string {
+  const target = executablePath ? `'${executablePath.replace(/'/g, "''")}'` : "$null";
+  return `$script:TaskPetTargetExecutable = ${target}\n`
+    + QQ_MUSIC_HELPER_FUNCTIONS.replace(QQ_MUSIC_IDENTITY_PATTERN, () => identityPattern.replace(/'/g, "''"));
+}
+
+export function createQqMusicHelperScript(command: string, identityPattern = QQ_MUSIC_IDENTITY_PATTERN, executablePath?: string): string {
+  if (!["status", "previous", "toggle", "next", "play"].includes(command)) {
     throw new Error("不支持此 QQ 音乐操作。");
   }
-  return QQ_MUSIC_HELPER_FUNCTIONS + String.raw`
+  // identityPattern 由 Main 根据已选程序生成；PowerShell 单引号字面量仍需转义。
+  return createMusicHelperFunctions(identityPattern, executablePath) + String.raw`
 try {
     Add-Type -AssemblyName System.Runtime.WindowsRuntime
     $managerType = [Windows.Media.Control.GlobalSystemMediaTransportControlsSessionManager, Windows.Media.Control, ContentType = WindowsRuntime]

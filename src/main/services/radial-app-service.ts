@@ -14,7 +14,8 @@ export async function validateRadialAppPath(target: string): Promise<string> {
   return normalized;
 }
 export async function launchRadialApp(id: string, settings: RadialMenuSettings, openPath: (target: string) => Promise<string>): Promise<boolean> {
-  const item = settings.items.find(entry => entry.id === id && entry.id.startsWith("app-"));
+  // 音乐仅在媒体控制上有额外能力；启动与普通应用完全共用路径校验及 shell.openPath。
+  const item = settings.items.find(entry => entry.id === id && (entry.id.startsWith("app-") || entry.id === "music"));
   if (!item?.path) throw new Error("应用入口不存在，请在轮盘菜单设置中重新绑定");
   const target = await validateRadialAppPath(item.path);
   const error = await openPath(target);

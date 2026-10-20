@@ -62,6 +62,8 @@ export interface TaskSystemLogger {
 }
 
 export interface TaskSystemSettingsAdapter {
+  chooseMusicPlayer?(): Promise<AppSettingsSnapshot>;
+  testMusicPlayer?(): Promise<import("./services/music-service").MusicResult>;
   chooseRadialApp?(): Promise<{path: string; name: string} | null>;
   radialAppIcon?(id: string): Promise<string | null>;
   testRadialApp?(id: string): Promise<boolean>;
@@ -114,7 +116,7 @@ export class TaskSystem {
   private settingsWindow: BrowserWindow | null = null;
   private pendingShow = false;
   private pendingSettingsShow = false;
-  private pendingSettingsSection: "interactionSection" | null = null;
+  private pendingSettingsSection: "interactionSection" | "radialSection" | null = null;
   private disposeTaskIpc: (() => void) | null = null;
   private disposeProcessIpc: (() => void) | null = null;
   private disposeSettingsIpc: (() => void) | null = null;
@@ -191,7 +193,7 @@ export class TaskSystem {
       catch (error) { return {ok: false, error: {code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "选择失败"}}; }
     });
     ipcMain.handle("taskpet:settings:test-radial-app", async (event, id: unknown) => {
-      if (!this.isSettingsSender(event) || typeof id !== "string" || !/^app-[a-zA-Z0-9-]{1,76}$/.test(id)) return {ok: false, error: {code: "INVALID_INPUT", message: "无效应用入口"}};
+      if (!this.isSettingsSender(event) || typeof id !== "string" || (id !== "music" && !/^app-[a-zA-Z0-9-]{1,76}$/.test(id))) return {ok: false, error: {code: "INVALID_INPUT", message: "无效应用入口"}};
       try { return {ok: true, data: await this.options.settings.testRadialApp?.(id) ?? false}; }
       catch (error) { return {ok: false, error: {code: "INTERNAL_ERROR", message: error instanceof Error ? error.message : "启动失败"}}; }
     });
@@ -208,8 +210,12 @@ export class TaskSystem {
       isTrustedSender: (event) => this.isPanelSender(event),
       beforeTaskUpdate: (taskId) => this.stopExternalRuntime(taskId),
       beforeTaskArchive: (taskId) => this.stopExternalRuntime(taskId),
+      beforeTaskDelete: (taskId) => this.stopExternalRuntime(taskId),
+      getHistory: (query) => this.service.getHistory(query, this.timeStats.dailyTotals(query.fromDate, query.toDate)),
       beforeOccurrenceComplete: (occurrenceId) => {
-        this.runtime.stopOccurrence(occurrenceId);
+        if (this.service.getOccurrence(occurrenceId).task.continueTimingAfterCompletion) {
+          this.runtime.checkpoint();
+        } else this.runtime.stopOccurrence(occurrenceId);
       },
       onChanged: () => this.handleStoredDataChanged(),
       onCompleted: (item) => this.runtime.announceManualCompletion(item),
@@ -228,6 +234,8 @@ export class TaskSystem {
       onChanged: () => this.handleStoredDataChanged()
     });
     this.disposeSettingsIpc = registerSettingsIpc({
+      chooseMusicPlayer: this.options.settings.chooseMusicPlayer,
+      testMusicPlayer: this.options.settings.testMusicPlayer,
       ipcMain,
       isTrustedSender: (event) => this.isSettingsSender(event),
       getSettings: () => this.options.settings.getSnapshot(),
@@ -293,7 +301,7 @@ export class TaskSystem {
     this.showPanelCommand("open-add-task", anchorBounds);
   }
 
-  showSettings(section?: "interactionSection"): void {
+  showSettings(section?: "interactionSection" | "radialSection"): void {
     if (section) this.pendingSettingsSection = section;
     if (!this.settingsWindow || this.settingsWindow.isDestroyed()) {
       this.pendingSettingsShow = true;
@@ -440,8 +448,7 @@ export class TaskSystem {
     }
 
     const targets: ProcessWatchTarget[] = [];
-    for (const item of this.service.getTodayTasks()) {
-      if (item.occurrence.status === "completed") continue;
+    for (const item of this.service.getRuntimeCandidates()) {
       const rules = rulesByTask.get(item.task.id) ?? [];
       if (rules.length > 0) targets.push({ taskId: item.task.id, rules });
     }

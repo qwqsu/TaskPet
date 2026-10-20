@@ -1,5 +1,17 @@
 /** 独立设置窗口的最小安全 bridge。 */
 import { contextBridge, ipcRenderer } from "electron";
+// 主题是只读窗口能力；Main 负责持久化、系统外观解析和广播。
+contextBridge.exposeInMainWorld("taskPetTheme", Object.freeze({
+  get: (): Promise<string> => ipcRenderer.invoke("taskpet:appearance:get"),
+  onChanged: (callback: (theme: string) => void): (() => void) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event: Electron.IpcRendererEvent, theme: unknown): void => {
+      if (typeof theme === "string") callback(theme);
+    };
+    ipcRenderer.on("taskpet:appearance:changed", listener);
+    return () => ipcRenderer.removeListener("taskpet:appearance:changed", listener);
+  }
+}));
 import type {
   AppSettingsSnapshot,
   DataActionResult,
@@ -44,13 +56,15 @@ function subscribeSettings(
 function subscribeNavigation(callback: (sectionId: string) => void): () => void {
   if (typeof callback !== "function") return () => {};
   const listener = (_event: Electron.IpcRendererEvent, sectionId: unknown): void => {
-    if (sectionId === "interactionSection") callback(sectionId);
+    if (sectionId === "interactionSection" || sectionId === "radialSection") callback(sectionId);
   };
   ipcRenderer.on(SETTINGS_CHANNELS.navigate, listener);
   return () => ipcRenderer.removeListener(SETTINGS_CHANNELS.navigate, listener);
 }
 
 contextBridge.exposeInMainWorld("taskPetSettings", Object.freeze({
+  chooseMusicPlayer: (): Promise<TaskApiResult<AppSettingsSnapshot>> => ipcRenderer.invoke("taskpet:settings:choose-music-player"),
+  testMusicPlayer: (): Promise<TaskApiResult<import("../main/services/music-service").MusicResult>> => ipcRenderer.invoke("taskpet:settings:test-music-player"),
   radialAppIcon: (id: string): Promise<string | null> => ipcRenderer.invoke("taskpet:settings:radial-app-icon", id),
   chooseRadialApp: (): Promise<TaskApiResult<{path: string; name: string} | null>> => ipcRenderer.invoke("taskpet:settings:choose-radial-app"),
   testRadialApp: (id: string): Promise<TaskApiResult<boolean>> => ipcRenderer.invoke("taskpet:settings:test-radial-app", id),

@@ -1,5 +1,17 @@
 /** Isolated bridge; main must independently validate sender, action IDs and ranges. */
 import { contextBridge, ipcRenderer } from "electron";
+// 主题是只读窗口能力；Main 负责持久化、系统外观解析和广播。
+contextBridge.exposeInMainWorld("taskPetTheme", Object.freeze({
+  get: (): Promise<string> => ipcRenderer.invoke("taskpet:appearance:get"),
+  onChanged: (callback: (theme: string) => void): (() => void) => {
+    if (typeof callback !== "function") return () => {};
+    const listener = (_event: Electron.IpcRendererEvent, theme: unknown): void => {
+      if (typeof theme === "string") callback(theme);
+    };
+    ipcRenderer.on("taskpet:appearance:changed", listener);
+    return () => ipcRenderer.removeListener("taskpet:appearance:changed", listener);
+  }
+}));
 
 export interface RadialMenuItem { id: string; enabled: boolean; name?: string; path?: string }
 export interface RadialMenuSettings {
@@ -15,8 +27,8 @@ export interface RadialMenuUpdate {
 }
 export interface RadialMenuResult { ok: boolean; error?: string }
 export type RadialMenuAction = string;
-export type RadialMusicCommand = "status" | "previous" | "toggle" | "next";
-export interface RadialMusicState { available: boolean; playing?: boolean; error?: string }
+export type RadialMusicCommand = "status" | "previous" | "toggle" | "next" | "launch-play";
+export interface RadialMusicState { available: boolean; playing?: boolean; error?: string; message?: string; launched?: boolean; needsBinding?: boolean }
 export interface RadialMenuBridge {
   appIcon(id: string): Promise<string | null>;
   getState(): Promise<RadialMenuState | null>;
@@ -32,6 +44,8 @@ const channels = Object.freeze({
   close: "taskpet:radial-menu:close", changed: "taskpet:radial-menu:changed"
 });
 const actions = new Set([
+  "music",
+  "open-music-settings",
   "open-panel", "quick-add", "open-settings", "toggle-monitoring", "toggle-pet",
   "toggle-ignore-mouse", "toggle-always-on-top", "quit"
 ]);
@@ -65,11 +79,11 @@ const bridge: RadialMenuBridge = {
     return ipcRenderer.invoke(channels.update, safe);
   },
   music: async (command) => {
-    if (!["status", "previous", "toggle", "next"].includes(command)) return { available: false, error: "不支持的音乐操作" };
+    if (!["status", "previous", "toggle", "next", "launch-play"].includes(command)) return { available: false, error: "不支持的音乐操作" };
     try {
       const result = await ipcRenderer.invoke(channels.music, command);
-      return result && typeof result.available === "boolean" ? result : { available: false, error: "QQ 音乐暂不可用" };
-    } catch { return { available: false, error: "无法连接 QQ 音乐，请确认播放器已运行" }; }
+      return result && typeof result.available === "boolean" ? result : { available: false, error: "音乐暂不可用" };
+    } catch { return { available: false, error: "无法连接播放器，请确认播放器已运行" }; }
   },
   close: () => ipcRenderer.send(channels.close),
   onChanged: (callback) => {

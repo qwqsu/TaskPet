@@ -29,6 +29,8 @@ export interface RegisterTaskIpcOptions {
   onChanged: () => void;
   beforeTaskUpdate: (taskId: string) => void;
   beforeTaskArchive: (taskId: string) => void;
+  beforeTaskDelete?: (taskId: string) => void;
+  getHistory?: (query: import("../../shared/task-schemas").HistoryQuery) => import("../../shared/task-types").HistoryDay[];
   beforeOccurrenceComplete: (occurrenceId: string) => void;
   onCompleted: (item: TaskListItem) => void;
   onReopened: (item: TaskListItem) => void;
@@ -91,7 +93,7 @@ export function registerTaskIpc(options: RegisterTaskIpcOptions): () => void {
   });
 
   handle(TASK_CHANNELS.history, HistoryQuerySchema, (query) => {
-    return options.service.getHistory(query);
+    return options.getHistory?.(query) ?? options.service.getHistory(query);
   });
 
   handle(TASK_CHANNELS.timeStats, TimeStatsQuerySchema, ({ period }) => {
@@ -116,6 +118,19 @@ export function registerTaskIpc(options: RegisterTaskIpcOptions): () => void {
     const task = options.service.archiveTask(id);
     options.onChanged();
     return task;
+  });
+
+  handle(TASK_CHANNELS.archived, EmptyTaskInputSchema, () => options.service.getArchivedTasks());
+  handle(TASK_CHANNELS.restore, TaskIdInputSchema, ({ id }) => {
+    const task = options.service.restoreTask(id);
+    options.onChanged();
+    return task;
+  });
+  handle(TASK_CHANNELS.delete, TaskIdInputSchema, ({ id }) => {
+    options.beforeTaskDelete?.(id);
+    const deleted = options.service.deleteTask(id);
+    if (deleted) options.onChanged();
+    return deleted;
   });
 
   handle(TASK_CHANNELS.complete, OccurrenceIdInputSchema, ({ occurrenceId }) => {

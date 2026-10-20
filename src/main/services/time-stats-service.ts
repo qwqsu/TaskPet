@@ -3,6 +3,7 @@ import type { TaskDatabase } from "../db/database";
 import { ProcessSessionRepository } from "../db/process-session-repository";
 import type { TaskClock } from "./task-service";
 import type { TaskRuntimeInterval } from "../../shared/process-types";
+import { toLocalDateKey } from "../../shared/local-date";
 import type {
   TimeStatsEntry,
   TimeStatsPeriod,
@@ -59,16 +60,43 @@ export class TimeStatsService {
   get(period: TimeStatsPeriod): TimeStatsSnapshot {
     const now = this.clock.now();
     const { from, to } = periodBounds(now, period);
+    return { period, from: from.toISOString(), to: to.toISOString(), ...this.summarize(from, new Date(to.getTime() + 1), now) };
+  }
+
+  /** 自然日采用半开区间，历史和今日/本周复用同一交集与秒级舍入口径。 */
+  dailyTotals(fromDate: string, toDate: string): Map<string, number> {
+    const parse = (key: string) => {
+      const [year, month, day] = key.split("-").map(Number);
+      return new Date(year!, month! - 1, day!);
+    };
+    const start = parse(fromDate);
+    const end = parse(toDate);
+    end.setDate(end.getDate() + 1);
+    const now = this.clock.now();
+    const intervals = this.intervals(start, end, now);
+    const totals = new Map<string, number>();
+    for (const day = new Date(start); day < end; day.setDate(day.getDate() + 1)) {
+      const next = new Date(day);
+      next.setDate(next.getDate() + 1);
+      const seconds = intervals.reduce((sum, interval) => sum + intersectedSeconds(
+        interval, day.getTime(), Math.min(next.getTime(), now.getTime())
+      ), 0);
+      if (seconds > 0) totals.set(toLocalDateKey(day), seconds);
+    }
+    return totals;
+  }
+
+  private intervals(from: Date, to: Date, now: Date): TaskRuntimeInterval[] {
+    const until = new Date(Math.min(to.getTime(), now.getTime()));
+    return [...this.sessions.listFinalizedIntervals(from.toISOString(), until.toISOString()),
+      ...this.activeSource.activeIntervals(now)];
+  }
+
+  private summarize(from: Date, to: Date, now: Date): Pick<TimeStatsSnapshot, "entries" | "totalSec"> {
     const fromMs = from.getTime();
-    // 展示完整自然日/自然周，但统计只能累计到现在，不能把未来区间算进去。
-    const accumulationToMs = now.getTime();
-    const fromIso = from.toISOString();
-    const accumulationToIso = now.toISOString();
+    const accumulationToMs = Math.min(to.getTime(), now.getTime());
     const totals = new Map<string, TimeStatsEntry>();
-    const intervals = [
-      ...this.sessions.listFinalizedIntervals(fromIso, accumulationToIso),
-      ...this.activeSource.activeIntervals(now)
-    ];
+    const intervals = this.intervals(from, to, now);
 
     for (const interval of intervals) {
       const seconds = intersectedSeconds(interval, fromMs, accumulationToMs);
@@ -88,9 +116,6 @@ export class TimeStatsService {
       || left.title.localeCompare(right.title, "zh-CN")
     ));
     return {
-      period,
-      from: fromIso,
-      to: to.toISOString(),
       totalSec: entries.reduce((sum, entry) => sum + entry.accumulatedSec, 0),
       entries
     };

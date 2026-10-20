@@ -57,7 +57,7 @@ module.exports = async function featuresSmoke(ctx) {
     (()=>{const range=document.querySelector('#panel input');range.value='85';range.dispatchEvent(new Event('input',{bubbles:true}));})()`);
   for(let n=0;n<40 && appSettingsSnapshot().radialMenu.opacity!==85;n++) await new Promise(resolve=>setTimeout(resolve,25));
   assert.equal(appSettingsSnapshot().radialMenu.opacity,85,"partial radial slider patches merge with saved config");
-  await read(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); document.querySelector('[data-action="music"]').focus()`);
+  await read(`document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true})); document.querySelector('[data-action="music"]').dispatchEvent(new MouseEvent('contextmenu',{bubbles:true,cancelable:true}))`);
   for(let n=0;n<100;n++) {
     if(await read("!document.querySelector('.music-reason')?.textContent.includes('正在连接')"))break;
     await new Promise(resolve=>setTimeout(resolve,100));

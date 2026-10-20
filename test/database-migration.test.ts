@@ -7,6 +7,8 @@ import Database from "better-sqlite3";
 import { openTaskDatabase } from "../src/main/db/database";
 import { migrateDatabase, latestSchemaVersion } from "../src/main/db/migrations";
 import { initialMigration } from "../src/main/db/migrations/001-init";
+import { processRuntimeMigration } from "../src/main/db/migrations/002-process-runtime";
+import { TaskRepository } from "../src/main/db/task-repository";
 import { SettingsRepository } from "../src/main/db/task-repository";
 import { createTaskHarness } from "./task-test-helpers";
 
@@ -27,16 +29,16 @@ test("migrations establish the task and process runtime schema exactly once", ()
       "task_process_rules",
       "tasks"
     ]);
-    assert.equal(latestSchemaVersion(), 2);
+    assert.equal(latestSchemaVersion(), 3);
     assert.equal(
       (harness.database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
-      2
+      3
     );
 
     migrateDatabase(harness.database, "2026-08-24T00:00:00.000Z");
     assert.equal(
       (harness.database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
-      2
+      3
     );
     assert.equal(harness.database.pragma("foreign_keys", { simple: true }), 1);
   } finally {
@@ -57,6 +59,32 @@ test("settings repository persists key-value application settings", () => {
   }
 });
 
+test("v2 data upgrades in place with continuation off and task/session/binding intact", () => {
+  const legacy = new Database(":memory:");
+  try {
+    legacy.exec(`CREATE TABLE schema_version(version INTEGER PRIMARY KEY, name TEXT, applied_at TEXT);
+      ${initialMigration.sql}
+      ${processRuntimeMigration.sql}
+      INSERT INTO schema_version VALUES(1,'001_init','2026-08-23'),(2,'002_process_runtime','2026-08-23');
+      INSERT INTO tasks(id,title,task_type,completion_mode,target_duration_sec,created_at,updated_at)
+        VALUES('old-task','保留的任务','one_time','duration',1800,'2026-08-23','2026-08-23');
+      INSERT INTO task_occurrences(id,task_id,occurrence_date,status,accumulated_sec,completed_at,created_at,updated_at)
+        VALUES('old-occurrence','old-task','2026-08-23','completed',1800,'2026-08-23T10:30:00Z','2026-08-23','2026-08-23');
+      INSERT INTO task_process_rules(id,task_id,platform,executable_name,match_mode,created_at)
+        VALUES('old-rule','old-task','win32','Study.exe','process_name','2026-08-23');
+      INSERT INTO process_sessions(id,task_id,occurrence_id,started_at,last_seen_at,ended_at,duration_sec,finalized)
+        VALUES('old-session','old-task','old-occurrence','2026-08-23T10:00:00Z','2026-08-23T10:30:00Z','2026-08-23T10:30:00Z',1800,1);`);
+    migrateDatabase(legacy);
+    assert.equal(new TaskRepository(legacy).requireTask("old-task").continueTimingAfterCompletion, false);
+    assert.deepEqual(legacy.prepare("SELECT status, accumulated_sec, completed_at FROM task_occurrences WHERE id = 'old-occurrence'").get(),
+      {status: "completed", accumulated_sec: 1800, completed_at: "2026-08-23T10:30:00Z"});
+    assert.equal((legacy.prepare("SELECT executable_name FROM task_process_rules").get() as {executable_name: string}).executable_name, "Study.exe");
+    assert.equal((legacy.prepare("SELECT duration_sec FROM process_sessions").get() as {duration_sec: number}).duration_sec, 1800);
+    migrateDatabase(legacy);
+    assert.equal((legacy.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as {count: number}).count, 3);
+  } finally { legacy.close(); }
+});
+
 test("a migrated on-disk database can be reopened with its data intact", () => {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "taskpet-db-test-"));
   const databasePath = path.join(temporaryRoot, "taskpet.sqlite3");
@@ -71,7 +99,7 @@ test("a migrated on-disk database can be reopened with its data intact", () => {
     assert.equal(new SettingsRepository(database).get("test.persistence"), "kept");
     assert.equal(
       (database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
-      2
+      3
     );
   } finally {
     if (database.open) database.close();
@@ -110,10 +138,10 @@ test("an existing database is backed up before a pending migration", () => {
   try {
     assert.equal(createdBackups.length, 1);
     assert.equal(fs.existsSync(createdBackups[0]!), true);
-    assert.equal(latestSchemaVersion(), 2);
+    assert.equal(latestSchemaVersion(), 3);
     assert.equal(
       (database.prepare("SELECT COUNT(*) AS count FROM schema_version").get() as { count: number }).count,
-      2
+      3
     );
 
     const backup = new Database(createdBackups[0]!, { readonly: true });

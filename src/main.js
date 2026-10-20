@@ -2,7 +2,7 @@
  * TaskPet 的 Electron Main Process 入口。
  * 负责桌宠窗口、托盘、宠物资源、桌宠 IPC 和 TaskSystem 生命周期；任务业务本身在 src/main/ 下。
  */
-const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, screen, shell, powerMonitor } = require("electron");
+const { app, BrowserWindow, Menu, Tray, dialog, ipcMain, nativeImage, nativeTheme, screen, shell, powerMonitor } = require("electron");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -55,8 +55,27 @@ const { TaskSystem } = require("../build/main/task-system");
 const { normalizeRadialSettings, normalizePetScale, RadialSettingsSchema } = require("../build/shared/radial-settings");
 const { UpdateAppSettingsInputSchema } = require("../build/shared/app-settings");
 const { launchRadialApp, validateRadialAppPath } = require("../build/main/services/radial-app-service");
-const { QqMusicService } = require("../build/main/services/qq-music-service");
-const musicService = new QqMusicService();
+const { MusicService } = require("../build/main/services/music-service");
+const { normalizeMusicBinding } = require("../build/shared/music-settings");
+const { normalizeAppearance, resolveTheme } = require("../build/shared/appearance");
+const { createPlatformProcessProvider } = require("../build/main/process/process-provider");
+const musicProcessProvider = createPlatformProcessProvider();
+const musicService = new MusicService({
+  binding: () => settings.musicBinding ?? null,
+  validatePath: async target => {
+    const selected = await validateRadialAppPath(target);
+    if (/\.lnk$/i.test(selected)) {
+      const currentTarget = shell.readShortcutLink(selected).target;
+      if (path.win32.normalize(currentTarget).toLowerCase() !== path.win32.normalize(settings.musicBinding.executablePath).toLowerCase()) {
+        throw new Error("播放器快捷方式的目标已改变，请重新绑定");
+      }
+    }
+    return selected;
+  },
+  openPath: target => shell.openPath(target),
+  isRunning: async executablePath => (await musicProcessProvider.listProcesses()).some(item =>
+    item.executablePath && path.win32.normalize(item.executablePath).toLowerCase() === path.win32.normalize(executablePath).toLowerCase())
+});
 let overlayTimer = null;
 let doubleClickDelayMs = 500;
 
@@ -71,7 +90,8 @@ const LOGO_PATH = path.join(__dirname, "assets", "logo.png");
 // resolvePetStorageRoot 映射到 asar 外的 resources/src/assets/pets。
 const DEVELOPMENT_PETS_ROOT = path.join(__dirname, "assets", "pets");
 const IS_P1_SMOKE = process.argv.includes("--smoke-test-p1");
-const IS_FEATURE_SMOKE = process.argv.includes("--smoke-test-v2") || IS_P1_SMOKE;
+const IS_V12_SMOKE = process.argv.includes("--smoke-test-v12");
+const IS_FEATURE_SMOKE = process.argv.includes("--smoke-test-v2") || IS_P1_SMOKE || IS_V12_SMOKE;
 const IS_SMOKE_TEST = process.argv.includes("--smoke-test") || IS_FEATURE_SMOKE;
 const IS_LOGIN_ITEM_SMOKE_TEST = process.argv.includes("--smoke-test-login-item");
 const IS_NATIVE_PROCESS_SMOKE_TEST = process.argv.includes("--smoke-test-native-process");
@@ -151,7 +171,7 @@ function markSmokeReady(component, ready = true) {
     "TaskPet smoke test ready (pet + task panel + settings + radial menu + key bubbles + SQLite)"
   );
   if (IS_FEATURE_SMOKE) {
-    void require(IS_P1_SMOKE ? "../scripts/p1-smoke.cjs" : "../scripts/features-smoke.cjs")({
+    void require(IS_V12_SMOKE ? "../scripts/v12-smoke.cjs" : IS_P1_SMOKE ? "../scripts/p1-smoke.cjs" : "../scripts/features-smoke.cjs")({
       app, BrowserWindow, applyAppSettings, appSettingsSnapshot, showRadialMenu, hideRadialMenu,
       radialMenuWindow, petWindow, taskSystem, refreshOverlayOrder
     }).then(() => app.exit(0)).catch(error => { console.error(error); app.exit(1); });
@@ -266,9 +286,11 @@ function loadSettings() {
   const petSize = normalizePetSize(raw.petSize, raw.zoom);
   settings = {
     ...raw,
+    appearance: normalizeAppearance(raw.appearance),
+    musicBinding: normalizeMusicBinding(raw.musicBinding),
     petSize,
     petScale: normalizePetScale(raw.petScale, petSize),
-    radialMenu: normalizeRadialSettings(raw.radialMenu),
+    radialMenu: normalizeRadialSettings(raw.radialMenu, normalizeMusicBinding(raw.musicBinding)),
     petOpacity: normalizePetOpacity(raw.petOpacity),
     ignoreMouseEvents: raw.ignoreMouseEvents === true,
     alwaysOnTop: raw.alwaysOnTop !== false,
@@ -297,6 +319,20 @@ function saveSettings() {
     console.warn(`Failed to save TaskPet settings: ${error.message}`);
     logger?.warn("Failed to save settings", error);
   }
+}
+
+function broadcastTheme() {
+  const theme = resolveTheme(settings.appearance, nativeTheme.shouldUseDarkColors);
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) window.webContents.send("taskpet:appearance:changed", theme);
+  }
+}
+
+async function chooseMusicPlayer() {
+  const selection = await chooseRadialApp();
+  if (!selection) return appSettingsSnapshot();
+  return applyAppSettings({radialMenu: {...settings.radialMenu, items: settings.radialMenu.items.map(item =>
+    item.id === "music" ? {...item, ...selection} : item)}});
 }
 
 function createAppIcon() {
@@ -501,6 +537,8 @@ function appSettingsSnapshot() {
   // app.getVersion() 读取 package.json 的 version。设置页 aboutVersion 最终显示的
   // 就是这里返回的 version，因此发布时只需要维护 package.json 这一处版本号。
   return {
+    appearance: { ...settings.appearance },
+    musicBinding: settings.musicBinding ? { ...settings.musicBinding } : null,
     autoStart: loginItemService?.status ?? {
       supported: false,
       registered: false,
@@ -539,6 +577,11 @@ function appSettingsSnapshot() {
 
 async function applyAppSettings(input) {
   let persistSettings = false;
+  if (input.appearance !== undefined) {
+    settings.appearance = normalizeAppearance(input.appearance);
+    persistSettings = true;
+    broadcastTheme();
+  }
 
   if (input.autoStart !== undefined) {
     if (!loginItemService?.supported) {
@@ -565,10 +608,22 @@ async function applyAppSettings(input) {
     const next = normalizeRadialSettings(RadialSettingsSchema.parse(input.radialMenu));
     // Validate newly selected targets, but keep existing missing shortcuts repairable.
     for (const item of next.items) {
-      if (item.id.startsWith("app-") && item.path !== settings.radialMenu.items.find(old => old.id === item.id)?.path) {
+      if ((item.id.startsWith("app-") || item.id === "music") && item.path !== settings.radialMenu.items.find(old => old.id === item.id)?.path && item.path) {
         await validateRadialAppPath(item.path);
       }
     }
+    const music = next.items.find(item => item.id === "music");
+    if (music?.path) {
+      const previous = settings.radialMenu.items.find(item => item.id === "music");
+      if (music.path !== previous?.path || !settings.musicBinding) {
+        const target = /\.lnk$/i.test(music.path) ? shell.readShortcutLink(music.path).target : music.path;
+        if (!/\.exe$/i.test(target)) throw new Error("音乐快捷方式必须指向本地 EXE 播放器");
+        const executablePath = await validateRadialAppPath(target);
+        settings.musicBinding = {name: music.name ?? "音乐", path: music.path, executablePath};
+      } else {
+        settings.musicBinding = {...settings.musicBinding, name: music.name ?? "音乐"};
+      }
+    } else settings.musicBinding = null;
     settings.radialMenu = next;
     if (!next.enabled) hideRadialMenu();
     else if (radialMenuWindow?.isVisible()) positionRadialMenu();
@@ -868,7 +923,7 @@ async function chooseRadialApp() {
 
 const appIconCache = new Map();
 async function radialAppIcon(id) {
-  const item = settings.radialMenu.items.find(entry => entry.id === id && entry.id.startsWith("app-"));
+  const item = settings.radialMenu.items.find(entry => entry.id === id && (entry.id.startsWith("app-") || entry.id === "music"));
   if (!item?.path) return null;
   if (appIconCache.has(item.path)) return appIconCache.get(item.path);
   try {
@@ -1127,6 +1182,7 @@ function createTray() {
 // ---------- 桌宠 preload IPC ----------
 
 const RADIAL_MENU_ACTIONS = new Set([
+  "open-music-settings",
   "open-panel", "quick-add", "toggle-monitoring", "toggle-always-on-top",
   "open-settings",
   "toggle-pet",
@@ -1138,7 +1194,12 @@ const RADIAL_MENU_ACTIONS = new Set([
 async function performRadialMenuAction(action) {
   try {
   if (typeof action !== "string") return {ok: false, error: "无效操作"};
-  if (action.startsWith("app-")) {
+  if (action.startsWith("app-") || action === "music") {
+    if (action === "music" && !settings.radialMenu.items.find(item => item.id === "music")?.path) {
+      hideRadialMenu();
+      taskSystem?.showSettings("radialSection");
+      return {ok: false, error: "请在菜单项中编辑音乐入口，选择播放器的 EXE 或 LNK"};
+    }
     await launchRadialApp(action, settings.radialMenu, target => shell.openPath(target));
     hideRadialMenu();
     return {ok: true};
@@ -1168,6 +1229,10 @@ async function performRadialMenuAction(action) {
       hideRadialMenu();
       taskSystem?.showSettings("interactionSection");
       break;
+    case "open-music-settings":
+      hideRadialMenu();
+      taskSystem?.showSettings("radialSection");
+      break;
     case "quit":
       app.quit();
       break;
@@ -1177,6 +1242,11 @@ async function performRadialMenuAction(action) {
 }
 
 function registerIpcHandlers() {
+  ipcMain.handle("taskpet:appearance:get", event => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    return window && !window.isDestroyed() ? resolveTheme(settings.appearance, nativeTheme.shouldUseDarkColors) : "classic-warm";
+  });
+  nativeTheme.on("updated", broadcastTheme);
   ipcMain.handle("taskpet:get-initial-state", (event) => isPetWindowSender(event) ? ({
     ...petStatePayload(),
     config: {
@@ -1290,7 +1360,7 @@ function registerIpcHandlers() {
     return radialMenuState();
   });
   ipcMain.handle("taskpet:radial-menu:music", (event, command) => {
-    if (!isRadialMenuSender(event) || !["status", "previous", "toggle", "next"].includes(command)) return {available: false, error: "无效音乐请求"};
+    if (!isRadialMenuSender(event) || !["status", "previous", "toggle", "next", "launch-play"].includes(command)) return {available: false, error: "无效音乐请求"};
     return musicService.execute(command);
   });
   ipcMain.handle("taskpet:radial-menu:icon", (event, id) => isRadialMenuSender(event) && typeof id === "string" ? radialAppIcon(id) : null);
@@ -1375,6 +1445,8 @@ app.whenReady().then(async () => {
     onSettingsReady: (ready) => markSmokeReady("settings", ready),
     onMonitoringStateChanged: () => { rebuildTrayMenu(); broadcastRadialMenuState(); },
     settings: {
+      chooseMusicPlayer,
+      testMusicPlayer: () => musicService.execute("launch-play"),
       chooseRadialApp,
       radialAppIcon,
       testRadialApp: id => launchRadialApp(id, settings.radialMenu, target => shell.openPath(target)),

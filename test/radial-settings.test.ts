@@ -57,6 +57,16 @@ test("an intentionally empty menu stays disabled when missing builtins are added
   assert.deepEqual(normalized.items, RADIAL_BUILTINS.map(id => ({ id, enabled: false })));
 });
 
+test("legacy music binding migrates to an editable menu item without losing user choices", () => {
+  const saved = defaultRadialSettings();
+  saved.items.find(item => item.id === "music")!.enabled = false;
+  const legacy = {name: "我的播放器", path: "C:\\Music\\Player.lnk"};
+  const migrated = normalizeRadialSettings(saved, legacy);
+  assert.deepEqual(migrated.items.find(item => item.id === "music"), {id: "music", enabled: false, ...legacy});
+  assert.deepEqual(normalizeRadialSettings(migrated, {name: "旧的", path: "C:\\Old.exe"}), migrated);
+  assert.equal(saved.items.find(item => item.id === "music")!.path, undefined);
+});
+
 test("obsolete size is repaired without discarding app entries or other preferences", () => {
   for (const scale of [undefined,40,49,131,140]) {
     const saved = {...defaultRadialSettings(),scale,opacity:67,enabled:false,

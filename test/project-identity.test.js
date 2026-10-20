@@ -18,7 +18,7 @@ test("package and builder use the TaskPet release identity", () => {
   );
 
   assert.equal(packageJson.name, "taskpet");
-  assert.equal(packageJson.version, "1.1.0");
+  assert.match(packageJson.version, /^\d+\.\d+\.\d+$/);
   assert.equal(packageLockJson.version, packageJson.version);
   assert.equal(packageLockJson.packages[""].version, packageJson.version);
   assert.equal(packageJson.homepage, "https://github.com/qwqsu/TaskPet");

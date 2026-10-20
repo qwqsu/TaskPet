@@ -82,6 +82,20 @@ test("unknown IDs, builtin IDs and missing saved paths never reach openPath", as
   assert.deepEqual(f.opened, []);
 });
 
+test("music uses the exact same EXE/LNK launch path without a media-session dependency", async (t) => {
+  const f = await fixture(t);
+  const music = f.settings.items.find(item => item.id === "music")!;
+  await assert.rejects(launchRadialApp("music", f.settings, f.openPath), /应用入口不存在/);
+  for (const target of [f.executable, f.shortcut]) {
+    music.path = target;
+    assert.equal(await launchRadialApp("music", f.settings, f.openPath), true);
+  }
+  assert.deepEqual(f.opened, [f.executable, f.shortcut]);
+  music.path = "https://example.invalid/Player.exe";
+  await assert.rejects(launchRadialApp("music", f.settings, f.openPath), /请选择本地/);
+  assert.equal(f.opened.length, 2);
+});
+
 test("launch rechecks a previously valid target if the file has disappeared", async (t) => {
   const f = await fixture(t);
   await validateRadialAppPath(f.executable);

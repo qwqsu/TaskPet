@@ -4,6 +4,11 @@
  */
 const { contextBridge, ipcRenderer } = require("electron");
 
+contextBridge.exposeInMainWorld("taskPetTheme", Object.freeze({
+  get: () => ipcRenderer.invoke("taskpet:appearance:get"),
+  onChanged: callback => subscribe("taskpet:appearance:changed", callback)
+}));
+
 function subscribe(channel, callback) {
   // 返回 unsubscribe，便于页面销毁时解除监听，避免重复订阅。
   if (typeof callback !== "function") return () => {};

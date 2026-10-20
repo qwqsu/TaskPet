@@ -26,11 +26,11 @@ body {
   max-width: 84px;
   overflow: hidden;
   padding: 9px 12px;
-  border: 1px solid #cc785c;
+  border: 1px solid var(--color-primary);
   border-radius: 12px;
-  color: #faf9f5;
-  background: rgba(24, 23, 21, 0.96);
-  box-shadow: 0 4px 12px rgba(24, 23, 21, 0.2);
+  color: var(--color-on-inverse);
+  background: var(--color-inverse);
+  box-shadow: var(--shadow-card);
   font-size: 13px;
   font-weight: 800;
   line-height: 1;

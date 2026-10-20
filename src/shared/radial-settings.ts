@@ -18,7 +18,7 @@ export function defaultRadialSettings(): RadialMenuSettings {
   return { enabled: true, opacity: 92, scale: 90, showHints: true, animations: true,
     items: RADIAL_BUILTINS.map(id => ({id, enabled: visible.has(id)})) };
 }
-export function normalizeRadialSettings(raw: unknown): RadialMenuSettings {
+export function normalizeRadialSettings(raw: unknown, legacyMusic?: {name: string; path: string} | null): RadialMenuSettings {
   // Preserve legal historical values; repair only obsolete or missing scale.
   let candidate = raw;
   if (raw && typeof raw === "object" && !Array.isArray(raw)) {
@@ -28,9 +28,12 @@ export function normalizeRadialSettings(raw: unknown): RadialMenuSettings {
     candidate = {...source, scale: valid ? source.scale : 90};
   }
   const parsed = RadialSettingsSchema.safeParse(candidate);
-  if (!parsed.success) return defaultRadialSettings();
-  const ids = new Set(parsed.data.items.map(i => i.id));
-  return {...parsed.data, items: [...parsed.data.items, ...RADIAL_BUILTINS.filter(id => !ids.has(id)).map(id => ({id, enabled: false}))]};
+  const settings = parsed.success ? parsed.data : defaultRadialSettings();
+  const ids = new Set(settings.items.map(i => i.id));
+  const items: RadialMenuSettings["items"] = [...settings.items, ...RADIAL_BUILTINS.filter(id => !ids.has(id)).map(id => ({id, enabled: false}))];
+  // 旧版独立音乐配置迁入同一菜单项，不改变顺序、启用状态，也不覆盖新入口。
+  return {...settings, items: items.map(item => item.id === "music" && !item.path && legacyMusic
+    ? {...item, name: legacyMusic.name, path: legacyMusic.path} : item)};
 }
 export function normalizePetScale(value: unknown, legacySize = "normal"): number {
   if (typeof value === "number" && Number.isFinite(value) && value >= 60 && value <= 180) return Math.round(value);

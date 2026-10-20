@@ -5,6 +5,8 @@
  */
 import { z } from "zod";
 import { RadialSettingsSchema, type RadialMenuSettings } from "./radial-settings";
+import { AppearanceSchema, type AppearanceSettings } from "./appearance";
+import type { MusicBinding } from "./music-settings";
 
 export const PET_SIZE_PRESETS = Object.freeze({
   small: Object.freeze({
@@ -160,6 +162,8 @@ export interface PetSettingsOption {
 }
 
 export interface AppSettingsSnapshot {
+  appearance?: AppearanceSettings;
+  musicBinding?: MusicBinding | null;
   petScale: number;
   radialMenu: RadialMenuSettings;
   autoStart: AutoStartStatus;
@@ -252,6 +256,7 @@ export const KeyboardMappingSettingsSchema = z.object({
 }).strict();
 
 export const UpdateAppSettingsInputSchema = z.object({
+  appearance: AppearanceSchema.optional(),
   petScale: z.number().int().min(60).max(180).optional(),
   radialMenu: RadialSettingsSchema.optional(),
   autoStart: z.boolean().optional(),

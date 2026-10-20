@@ -12,3 +12,7 @@ out/
 .env.*
 !.env.example
 *.tmp
+
+# 本地实现清单和验收笔记不作为公开发布源码的一部分。
+/TaskPet_v*_产品改进清单.md
+/docs/v1.2-validation.md
